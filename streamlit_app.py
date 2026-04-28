@@ -8,7 +8,7 @@ st.set_page_config(page_title="IA EXPERT V4 - PRÉDICTION", layout="wide", page_
 # --- PARAMÈTRES DES DERNIERS TIRAGES ---
 # Mets à jour ces numéros après chaque tirage pour activer les bonus
 DERNIERS_LOTO = [4, 12, 25, 33, 48]
-DERNIERS_EURO = [11, 14, 20, 35, 43]
+DERNIERS_EURO = [25, 26, 30, 40, 45]
 
 # --- DICTIONNAIRE DES ANNONCIATEURS (Basé sur tes données) ---
 # Format : {Numéro Sorti : Numéro qu'il annonce souvent}
