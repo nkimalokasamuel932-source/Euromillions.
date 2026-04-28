@@ -1,110 +1,93 @@
 import streamlit as st
 import pandas as pd
-import random
+import os
 
-# 1. CONFIGURATION DE LA PAGE
-st.set_page_config(page_title="Loto-Euro Fusion Pro", page_icon="🧬", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="IA EXPERT V4 - PRÉDICTION", layout="wide", page_icon="🔮")
 
-# TITRE MODIFIÉ POUR VÉRIFIER LA MISE À JOUR
-st.title("🧬 Intelligence Croisée V2.0")
-st.write("Analyse stratégique basée sur le tirage du **Samedi 25 Avril 2026**")
+# --- PARAMÈTRES DES DERNIERS TIRAGES ---
+# Mets à jour ces numéros après chaque tirage pour activer les bonus
+DERNIERS_LOTO = [4, 12, 25, 33, 48]
+DERNIERS_EURO = [11, 14, 20, 35, 43]
 
-# --- 2. DONNÉES ET STATISTIQUES (TES DONNÉES) ---
-# Données basées sur ton succès du 25/04 (4/5 numéros trouvés)
-numeros_loto_chauds = [17, 22, 23, 25, 49, 16, 30, 2, 33, 9, 10, 13]
-numeros_euro_chauds = [44, 42, 23, 13, 17, 10, 49, 19, 29, 37, 50, 25]
+# --- DICTIONNAIRE DES ANNONCIATEURS (Basé sur tes données) ---
+# Format : {Numéro Sorti : Numéro qu'il annonce souvent}
+ANNONCES_EURO = {23: 19, 10: 24, 49: 42, 13: 26, 50: 16, 44: 50, 42: 12, 17: 7}
+ANNONCES_LOTO = {23: 32, 10: 47, 49: 29, 13: 3, 16: 5, 2: 9, 27: 30, 41: 17}
 
-# Calcul de la convergence (les numéros présents dans les deux jeux)
-convergence = list(set(numeros_loto_chauds) & set(numeros_euro_chauds))
-
-# --- 3. FONCTION DE GÉNÉRATION EXPERT ---
-def generer_ticket_expert():
-    # Piliers (Ceux qui sortent le plus)
-    noyau = [13, 44] 
-    # Transfert (Ceux qui sont sortis samedi au Loto)
-    transfert = [23, 49, 17]
-    # Retard et Forme
-    surprises = [42, 10, 16, 22]
+# --- MOTEUR DE CALCUL ---
+def calculer_scores_expert(df, derniers_numeros, dico_annonces):
+    df = df.copy()
+    df['ecart_max'] = df['ecart_max'].replace(0, 1)
+    moy_h = df['reussite'].mean() if df['reussite'].mean() != 0 else 1
     
-    ticket = set()
-    ticket.add(13) # On force le pilier
-    ticket.add(23) # On force le pivot (sorti samedi)
+    # 1. Tension & Accélération
+    df['tension'] = (df['ecart_actuel'] / df['ecart_max'] * 100).clip(upper=110)
+    df['acceleration'] = (df['forme_generale'] / (moy_h / 10) * 100).fillna(0)
     
-    # On complète le ticket jusqu'à 5 numéros
-    candidats = [n for n in (transfert + surprises + noyau) if n not in ticket]
-    while len(ticket) < 5:
-        ticket.add(random.choice(candidats))
-        
-    return sorted(list(ticket))
-
-# --- 4. INTERFACE À TROIS ONGLETS ---
-tab1, tab2, tab3 = st.tabs(["🏆 PRONOSTIC EXPERT", "🚀 CONVERGENCE", "🔄 ANALYSE MIROIR"])
-
-with tab1:
-    st.header("🎯 Ta Sélection pour Mardi")
-    st.info("Cette sélection utilise l'algorithme 'Entonnoir' : Piliers + Forme Loto + Équilibre.")
+    # 2. Bonus Voisinage (n+1 / n-1)
+    voisins = [n-1 for n in derniers_numeros] + [n+1 for n in derniers_numeros]
+    df['bonus_voisin'] = df['numero'].apply(lambda x: 15 if x in voisins else 0)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔥 GÉNÉRER MON TICKET PRIORITAIRE"):
-            grille = generer_ticket_expert()
-            # Sélection des étoiles les plus probables
-            etoiles = sorted(random.sample([2, 8, 3, 10, 11], 2))
-            
-            # AFFICHAGE DU RÉSULTAT
-            st.success(f"### NUMÉROS : {', '.join(map(str, grille))}")
-            st.warning(f"### ÉTOILES : {etoiles[0]} — {etoiles[1]}")
-            
-            # --- ANALYSE DE L'ÉQUILIBRE PAIR/IMPAIR ---
-            nb_pairs = len([n for n in grille if n % 2 == 0])
-            nb_impairs = 5 - nb_pairs
-            
-            st.divider()
-            st.write(f"⚖️ **Analyse de l'Équilibre :**")
-            st.write(f"Cette grille contient **{nb_pairs} Pairs** et **{nb_impairs} Impairs**.")
-            
-            if nb_pairs == 2 or nb_pairs == 3:
-                st.info("✅ **ÉQUILIBRE OPTIMAL :** Cette configuration est statistiquement la plus fréquente.")
-            elif nb_pairs == 0 or nb_pairs == 5:
-                st.error("⚠️ **ALERTE :** Grille très déséquilibrée. Relance le bouton pour un meilleur mix.")
-            else:
-                st.write("💡 **INFO :** Équilibre correct, mais moins fréquent que le 2/3.")
-            
-            st.balloons()
-            
-    with col2:
-        st.write("### 📝 Rappel Stratégique")
-        st.markdown(f"""
-        - **Numéro Pivot :** 23 (En pleine forme)
-        - **Pilier :** 13 (À ne pas oublier)
-        - **Convergence :** {', '.join(map(str, sorted(convergence)))}
-        """)
+    # 3. Bonus Annonciateur (Le numéro qui "appelle" l'autre)
+    df['bonus_annonce'] = 0
+    for dernier in derniers_numeros:
+        if dernier in dico_annonces:
+            num_appelé = dico_annonces[dernier]
+            df.loc[df['numero'] == num_appelé, 'bonus_annonce'] += 20
 
-with tab2:
-    st.header("🚀 Puissance de Convergence")
-    st.write("Numéros détectés simultanément sur les deux jeux :")
+    # 4. Score Final Pondéré
+    df['score_expert'] = (df['tension'] * 0.40) + (df['acceleration'] * 0.30) + df['bonus_voisin'] + df['bonus_annonce']
+    return df.sort_values('score_expert', ascending=False)
+
+# --- CHARGEMENT ---
+@st.cache_data
+def load_data():
+    if os.path.exists('data_expert.csv'):
+        return pd.read_csv('data_expert.csv')
+    return None
+
+df_raw = load_data()
+
+# --- INTERFACE ---
+st.title("🔮 IA EXPERT V4 : Système de Succession")
+st.markdown("---")
+
+if df_raw is not None:
+    # Nettoyage
+    df_raw['jeu'] = df_raw['jeu'].astype(str).str.upper().str.strip()
     
-    # Création d'un tableau propre
-    data_conv = []
-    for n in convergence:
-        statut = "⭐ PIVOT" if n in [13, 23] else "✅ VALIDÉ"
-        force = "99%" if n in [13, 23] else "85%"
-        data_conv.append({"Numéro": n, "Statut": statut, "Confiance": force})
-    
-    df_conv = pd.DataFrame(data_conv)
-    st.table(df_conv.sort_values(by="Confiance", ascending=False))
+    # Calculs
+    df_euro = calculer_scores_expert(df_raw[df_raw['jeu'] == 'EURO'], DERNIERS_EURO, ANNONCES_EURO)
+    df_loto = calculer_scores_expert(df_raw[df_raw['jeu'] == 'LOTO'], DERNIERS_LOTO, ANNONCES_LOTO)
 
-with tab3:
-    st.header("🔄 Flux Miroir (Loto ↔ Euro)")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Sorties Loto Samedi")
-        st.write("Numéros à surveiller pour mardi :")
-        st.code("17, 22, 23, 25, 49")
-    with c2:
-        st.subheader("Historique Euro")
-        st.write("Bases solides pour le prochain Loto :")
-        st.code("44, 42, 13, 10")
+    # --- ALERTES SUITES ---
+    for jeu_name, df_res in [("Euro", df_euro), ("Loto", df_loto)]:
+        top_10 = df_res.head(10)['numero'].tolist()
+        suites = [f"{n}-{n+1}" for n in top_10 if n+1 in top_10]
+        if suites:
+            st.warning(f"⚠️ **Alerte Suite {jeu_name} :** Les paires {', '.join(suites)} sont dans le Top 10 !")
 
-st.divider()
-st.caption("Application Loto-Euro Fusion - Version 2.0 - Mise à jour le 27/04/2026")
+    # --- AFFICHAGE ---
+    tab1, tab2 = st.tabs(["🇪🇺 EURO MILLIONS", "🎰 LOTO"])
+
+    with tab1:
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.subheader("📊 Graphique des Probabilités")
+            st.bar_chart(df_euro.head(10).set_index('numero')['score_expert'])
+        with c2:
+            st.subheader("📋 Top Experts")
+            st.dataframe(df_euro[['numero', 'score_expert', 'tension', 'acceleration', 'bonus_annonce']].head(12))
+
+    with tab2:
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.subheader("📊 Graphique des Probabilités")
+            st.bar_chart(df_loto.head(10).set_index('numero')['score_expert'], color="#FF4B4B")
+        with c2:
+            st.subheader("📋 Top Experts")
+            st.dataframe(df_loto[['numero', 'score_expert', 'tension', 'acceleration', 'bonus_annonce']].head(12))
+
+else:
+    st.error("Fichier data_expert.csv manquant.")
