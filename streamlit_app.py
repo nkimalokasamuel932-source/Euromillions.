@@ -1,93 +1,151 @@
 import streamlit as st
 import pandas as pd
-import os
+import random
+from datetime import datetime
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="IA EXPERT V4 - PRÉDICTION", layout="wide", page_icon="🔮")
+# --- 1. CONFIGURATION ET DESIGN ---
+st.set_page_config(page_title="IA OMNIBUS V4.0", page_icon="🧬", layout="wide")
 
-# --- PARAMÈTRES DES DERNIERS TIRAGES ---
-# Mets à jour ces numéros après chaque tirage pour activer les bonus
-DERNIERS_LOTO = [4, 12, 25, 33, 48]
-DERNIERS_EURO = [25, 26, 30, 40, 45]
-
-# --- DICTIONNAIRE DES ANNONCIATEURS (Basé sur tes données) ---
-# Format : {Numéro Sorti : Numéro qu'il annonce souvent}
-ANNONCES_EURO = {23: 19, 10: 24, 49: 42, 13: 26, 50: 16, 44: 50, 42: 12, 17: 7}
-ANNONCES_LOTO = {23: 32, 10: 47, 49: 29, 13: 3, 16: 5, 2: 9, 27: 30, 41: 17}
-
-# --- MOTEUR DE CALCUL ---
-def calculer_scores_expert(df, derniers_numeros, dico_annonces):
-    df = df.copy()
-    df['ecart_max'] = df['ecart_max'].replace(0, 1)
-    moy_h = df['reussite'].mean() if df['reussite'].mean() != 0 else 1
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700&display=swap');
+    .main { background-color: #050a14; font-family: 'Urbanist', sans-serif; }
     
-    # 1. Tension & Accélération
-    df['tension'] = (df['ecart_actuel'] / df['ecart_max'] * 100).clip(upper=110)
-    df['acceleration'] = (df['forme_generale'] / (moy_h / 10) * 100).fillna(0)
+    /* Cartes de jeu Glassmorphism */
+    .game-card {
+        padding: 30px; border-radius: 24px; background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 20px; text-align: center;
+    }
+    .euro-border { border-top: 5px solid #00ffcc; }
+    .loto-border { border-top: 5px solid #ff00ff; }
+
+    /* Boules de tirage 3D */
+    .ball {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 60px; height: 60px; border-radius: 50%; font-size: 24px;
+        font-weight: 700; margin: 8px; color: #000;
+        box-shadow: inset -5px -5px 15px rgba(0,0,0,0.2), 5px 5px 15px rgba(0,0,0,0.3);
+    }
+    .euro-ball { background: linear-gradient(145deg, #00ffcc, #0088aa); }
+    .loto-ball { background: linear-gradient(145deg, #ff00ff, #aa00aa); color: white; }
+    .star-ball { background: linear-gradient(145deg, #ffd700, #b8860b); width: 50px; height: 50px; font-size: 20px; }
+
+    .tag { display: block; font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: bold; margin-top: -5px; }
     
-    # 2. Bonus Voisinage (n+1 / n-1)
-    voisins = [n-1 for n in derniers_numeros] + [n+1 for n in derniers_numeros]
-    df['bonus_voisin'] = df['numero'].apply(lambda x: 15 if x in voisins else 0)
+    .stButton > button {
+        background: linear-gradient(90deg, #1e293b, #334155); color: white;
+        border-radius: 12px; height: 3.5em; width: 100%; border: 1px solid rgba(255,255,255,0.1);
+    }
+    .stButton > button:hover { border-color: #00ffcc; color: #00ffcc; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. BASE DE DONNÉES UNIFIÉE ---
+# Structure : [Masse_Hist, Tension_Ecart, Dernier_Tirage, Zone, Tag_Logique, Sorti_Loto_30_04]
+db = {
+    1:  [185, 4, 14, 1, "Masse", False],
+    2:  [179, 4, 30, 1, "Vase Communiquant", True],   # Sorti Loto ce soir
+    3:  [187, 60, 30, 1, "Rupture Tension", True],   # Sorti Loto ce soir
+    4:  [197, 10, 14, 1, "Forme", False],
+    6:  [188, 16, 27, 1, "Voisinage", False],
+    12: [194, 10, 24, 1, "Compagnon", False],
+    13: [202, 2, 21, 1, "Élite", False],
+    30: [180, 5, 30, 2, "Saturation", True],         # Sorti Loto ce soir
+    31: [175, 8, 30, 2, "Saturation", True],         # Sorti Loto ce soir
+    32: [178, 35, 0, 2, "Oublié", False],
+    37: [190, 2, 30, 3, "Saturation", True],         # Sorti Loto ce soir
+    42: [219, 17, 0, 3, "Aspiration", False],
+    43: [179, 9, 27, 3, "Pivot", False],
+    47: [181, 0, 28, 3, "Repos", False]
+}
+
+# --- 3. MOTEUR DE CALCUL OMNIBUS ---
+def calculer_score_final(n, mode="euro"):
+    d = db.get(n)
+    # A. Fondamental (Masse + Tension)
+    score = (d[0] / 300 * 25) + (d[1] / 60 * 35)
     
-    # 3. Bonus Annonciateur (Le numéro qui "appelle" l'autre)
-    df['bonus_annonce'] = 0
-    for dernier in derniers_numeros:
-        if dernier in dico_annonces:
-            num_appelé = dico_annonces[dernier]
-            df.loc[df['numero'] == num_appelé, 'bonus_annonce'] += 20
-
-    # 4. Score Final Pondéré
-    df['score_expert'] = (df['tension'] * 0.40) + (df['acceleration'] * 0.30) + df['bonus_voisin'] + df['bonus_annonce']
-    return df.sort_values('score_expert', ascending=False)
-
-# --- CHARGEMENT ---
-@st.cache_data
-def load_data():
-    if os.path.exists('data_expert.csv'):
-        return pd.read_csv('data_expert.csv')
-    return None
-
-df_raw = load_data()
-
-# --- INTERFACE ---
-st.title("🔮 IA EXPERT V4 : Système de Succession")
-st.markdown("---")
-
-if df_raw is not None:
-    # Nettoyage
-    df_raw['jeu'] = df_raw['jeu'].astype(str).str.upper().str.strip()
+    # B. Logique du Vase Communiquant (Migration Loto -> Euro)
+    if d[5]: # Si sorti au Loto ce soir
+        score -= 50 # Le vase est vide pour ce numéro
+    else:
+        # C. Logique du Compagnon (Aspiration)
+        # Si un numéro adjacent (n-1, n+1) est sorti ce soir, bonus d'aspiration
+        for v in [n-1, n+1]:
+            if v in db and db[v][5]:
+                score += 30
+                break
     
-    # Calculs
-    df_euro = calculer_scores_expert(df_raw[df_raw['jeu'] == 'EURO'], DERNIERS_EURO, ANNONCES_EURO)
-    df_loto = calculer_scores_expert(df_raw[df_raw['jeu'] == 'LOTO'], DERNIERS_LOTO, ANNONCES_LOTO)
+    # D. Respiration Temporelle (Bonus Zone Basse pour Vendredi)
+    if d[3] == 1: score += 20
+    if d[2] <= 14: score += 15 # Bonus pour les numéros absents de la quinzaine
+    
+    return round(score, 2)
 
-    # --- ALERTES SUITES ---
-    for jeu_name, df_res in [("Euro", df_euro), ("Loto", df_loto)]:
-        top_10 = df_res.head(10)['numero'].tolist()
-        suites = [f"{n}-{n+1}" for n in top_10 if n+1 in top_10]
-        if suites:
-            st.warning(f"⚠️ **Alerte Suite {jeu_name} :** Les paires {', '.join(suites)} sont dans le Top 10 !")
+# --- 4. INTERFACE ---
+st.title("🧬 IA OMNIBUS V4.0 : Fusion des Systèmes")
+st.write(f"Analyse prédictive consolidée | **Status : Cycle d'Expiration Activé**")
 
-    # --- AFFICHAGE ---
-    tab1, tab2 = st.tabs(["🇪🇺 EURO MILLIONS", "🎰 LOTO"])
+# Diagnostic dynamique
+st.warning(f"🚨 **ALERTE VASE COMMUNIQUANT :** Les numéros 2, 3, 30, 31, 37 (Loto ce soir) sont exclus des priorités Euro de demain. Transfert d'énergie détecté vers la Zone **12-15**.")
 
-    with tab1:
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            st.subheader("📊 Graphique des Probabilités")
-            st.bar_chart(df_euro.head(10).set_index('numero')['score_expert'])
-        with c2:
-            st.subheader("📋 Top Experts")
-            st.dataframe(df_euro[['numero', 'score_expert', 'tension', 'acceleration', 'bonus_annonce']].head(12))
+tab1, tab2, tab3 = st.tabs(["🎯 TERMINAL DE TIRAGE", "📊 ANALYSE DE FLUX", "📜 HISTORIQUE LOGIQUE"])
 
-    with tab2:
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            st.subheader("📊 Graphique des Probabilités")
-            st.bar_chart(df_loto.head(10).set_index('numero')['score_expert'], color="#FF4B4B")
-        with c2:
-            st.subheader("📋 Top Experts")
-            st.dataframe(df_loto[['numero', 'score_expert', 'tension', 'acceleration', 'bonus_annonce']].head(12))
+with tab1:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("<div class='game-card euro-border'>", unsafe_allow_html=True)
+        st.subheader("🇪🇺 EUROMILLIONS")
+        if st.button("GÉNÉRER GRILLE EURO V4.0"):
+            scores_e = {n: calculer_score_final(n, "euro") for n in db.keys()}
+            top_e = sorted(scores_e, key=scores_e.get, reverse=True)[:5]
+            
+            html_res = ""
+            for n in sorted(top_e):
+                tag = db[n][4] if not db[n][5] else "Remplaçant"
+                html_res += f"<div style='display:inline-block;'><div class='ball euro-ball'>{n}</div><span class='tag'>{tag}</span></div>"
+            st.markdown(html_res, unsafe_allow_html=True)
+            
+            st.write("---")
+            # Étoiles basées sur la résonance du 8 Loto
+            st.markdown("<div class='ball star-ball'>3</div><div class='ball star-ball'>8</div>", unsafe_allow_html=True)
+            st.markdown("<span class='tag'>Résonance Étoile Loto</span>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-else:
-    st.error("Fichier data_expert.csv manquant.")
+    with col2:
+        st.markdown("<div class='game-card loto-border'>", unsafe_allow_html=True)
+        st.subheader("🇫🇷 LOTO NATIONAL")
+        if st.button("GÉNÉRER GRILLE LOTO V4.0"):
+            # Pour le loto on cherche la répétition de forme
+            scores_l = {n: (db[n][0]/300*50) + (20 if db[n][5] else 0) for n in db.keys()}
+            top_l = sorted(scores_l, key=scores_l.get, reverse=True)[:5]
+            
+            html_loto = ""
+            for n in sorted(top_l):
+                html_loto += f"<div style='display:inline-block;'><div class='ball loto-ball'>{n}</div><span class='tag'>Forme</span></div>"
+            st.markdown(html_loto, unsafe_allow_html=True)
+            
+            st.write("---")
+            st.markdown("<div class='ball star-ball' style='background:#ff4b4b;color:white;'>4</div>", unsafe_allow_html=True)
+            st.markdown("<span class='tag'>Ancre Chance</span>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+with tab2:
+    st.write("### 🧮 Calculateur de Pression (Migration de l'énergie)")
+    sc_final = {n: calculer_score_final(n) for n in db.keys()}
+    df_flux = pd.DataFrame([
+        {"Numéro": k, "Score Omnibus": v, "Zone": db[k][3], "Status": "VIDE (Sorti)" if db[k][5] else "ASPIRATION"}
+        for k, v in sc_final.items()
+    ]).sort_values("Score Omnibus", ascending=False)
+    st.dataframe(df_flux, use_container_width=True)
+
+with tab3:
+    st.markdown("""
+    ### Structure de la Version 4.0
+    - **V1 (Respiration) :** Gère les cycles de 14 jours (Bonus Zone 1).
+    - **V2 (Balancier) :** Équilibre les types de numéros (Masse vs Tension).
+    - **V3 (Vase Communiquant) :** Analyse les résultats du 30/04 pour purger les doublons.
+    - **V4 (Compagnons) :** Boost les numéros voisins de ceux sortis ce soir.
+    """)
