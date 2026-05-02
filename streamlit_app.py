@@ -1,127 +1,113 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 from datetime import datetime
 
-# --- 1. CONFIGURATION ET DESIGN ---
-st.set_page_config(page_title="IA OMNIBUS V7.0 EXPERT", page_icon="🧬", layout="wide")
+# --- 1. CONFIGURATION ET STYLE ---
+st.set_page_config(page_title="IA OMNIBUS V9.0 - Triple Flux", page_icon="🧬", layout="wide")
 
 st.markdown("""
     <style>
     .main { background: radial-gradient(circle at top, #081221, #020617); color: #f8fafc; font-family: 'Urbanist', sans-serif; }
-    .card { background: rgba(30, 41, 59, 0.5); padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+    .card { background: rgba(30, 41, 59, 0.4); padding: 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+    .strat-header { font-size: 18px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    
+    /* Couleurs des Stratégies */
+    .alpha-title { color: #00ffcc; }
+    .beta-title { color: #ff00ff; }
+    .theta-title { color: #f8fafc; border-bottom: 1px solid #94a3b8; }
+    
     .ball {
         display: inline-flex; align-items: center; justify-content: center;
-        width: 58px; height: 58px; border-radius: 50%; font-size: 24px;
-        font-weight: 800; margin: 8px; color: #000;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.3), inset -4px -4px 8px rgba(0,0,0,0.2);
+        width: 52px; height: 52px; border-radius: 50%; font-size: 20px;
+        font-weight: 800; margin: 6px; color: #000;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3), inset -3px -3px 6px rgba(0,0,0,0.2);
     }
-    .euro-ball { background: linear-gradient(135deg, #00f2fe, #4facfe); }
-    .star-ball { background: linear-gradient(135deg, #ffd700, #b8860b); width: 48px; height: 48px; font-size: 18px; }
-    .status-text { font-size: 14px; color: #94a3b8; margin-top: 10px; }
+    .alpha-ball { background: linear-gradient(135deg, #00f2fe, #4facfe); }
+    .beta-ball { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; }
+    .theta-ball { background: linear-gradient(135deg, #94a3b8, #475569); color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BASE DE DONNÉES CONSOLIDÉE (Tes stats de vendredi 1er Mai) ---
-# Format : [Réussite_Tot, Forme_Rec, Ecart_Act, Ecart_Max, Meilleure_Affin, Annonce_Par, Annonciateur_De]
-db_expert = {
-    13: [321, 0, 10, 55, 3, 31, 3],
-    41: [321, 1, 9, 41, 16, 13, 17],
-    22: [314, 3, 2, 50, 23, 6, 26],
-    15: [311, 1, 1, 46, 24, 10, 23],
-    3:  [305, 1, 0, 49, 13, 44, 15],
-    9:  [299, 1, 0, 44, 15, 2, 23],
-    16: [299, 2, 3, 53, 6, 13, 5],
-    31: [299, 1, 0, 67, 36, 37, 13],
-    32: [278, 0, 31, 64, 22, 23, 3],
-    42: [274, 0, 0, 54, 16, 9, 14],
-    11: [274, 0, 0, 65, 7, 19, 1],
-    46: [280, 0, 0, 42, 22, 1, 18],
-    47: [280, 1, 0, 68, 21, 10, 3],
-    1:  [291, 0, 0, 42, 49, 34, 6]
-}
+# --- 2. BASE DE DONNÉES INTERNE (Synchronisée avec tes stats d'Expert) ---
+@st.cache_data
+def get_internal_db():
+    data = {
+        "numero": [1, 3, 7, 9, 10, 11, 13, 15, 17, 18, 19, 22, 23, 25, 29, 31, 32, 33, 41, 42, 46, 47],
+        "reussite": [291, 305, 294, 299, 292, 274, 321, 311, 284, 270, 271, 314, 291, 273, 300, 299, 278, 278, 322, 274, 280, 280],
+        "ecart": [39, 0, 0, 2, 0, 25, 11, 1, 0, 8, 0, 2, 1, 2, 0, 0, 32, 5, 0, 17, 10, 7],
+        "max": [42, 49, 52, 44, 43, 65, 55, 46, 58, 67, 119, 50, 52, 53, 38, 67, 64, 41, 41, 54, 42, 68],
+        "annonce_par": [34, 44, 13, 2, 26, 19, 31, 10, 41, 13, 7, 6, 9, 15, 38, 37, 23, 25, 13, 9, 1, 10],
+        "affinite": [49, 13, 11, 15, 30, 7, 3, 24, 30, 13, 29, 23, 32, 33, 19, 36, 22, 22, 16, 16, 22, 21]
+    }
+    return pd.DataFrame(data)
 
-# --- 3. MOTEUR DE CALCUL PRÉDICTIF (ALGO V7) ---
-def engine_omnibus(last_draw_results):
-    scores = {}
-    for n, stats in db_expert.items():
-        reussite, forme, ecart, ecart_max, affin, par, annonciateur = stats
-        
-        # A. Score de Tension (Le ressort statistique)
-        score = (reussite * 0.1) + (ecart * 2.0)
-        
-        # B. Bonus de Zone Critique (Ecart > 60% du Max)
-        if ecart > (ecart_max * 0.6):
-            score += 45
-            
-        # C. Logique d'Annonciation (Basée sur le tirage du 1er Mai)
-        for last_num in last_draw_results:
-            if par == last_num: # Si le numéro est "annoncé par" un sortant
-                score += 55
-            if affin == last_num: # Si le numéro a une affinité avec un sortant
-                score += 30
-        
-        # D. Malus de sortie récente (Vase vide)
-        if ecart == 0:
-            score -= 70
-            
-        scores[n] = round(score, 2)
+df = get_internal_db()
+
+# --- 3. MOTEUR DE CALCUL MULTI-STRATÉGIES ---
+def engine_multi_flux(last_draw):
+    # STRATÉGIE ALPHA : Tension & Rupture (Les grands écarts)
+    df['score_alpha'] = (df['reussite'] * 0.1) + (df['ecart'] * 2.5)
+    # Bonus Annonciateurs
+    for num in last_draw:
+        df.loc[df['annonce_par'] == num, 'score_alpha'] += 40
+    alpha = df.sort_values('score_alpha', ascending=False).head(5)['numero'].tolist()
+
+    # STRATÉGIE BÊTA : Masse & Puissance (Les meilleures réussites / Forme)
+    # On mélange les top réussites avec un peu d'aléatoire contrôlé
+    beta_pool = df.sort_values('reussite', ascending=False).head(10)
+    beta = beta_pool.sample(5)['numero'].tolist()
+
+    # STRATÉGIE THÊTA : Chaos & Surprise (Numéros non attendus / Faible écart)
+    # On cherche les numéros qui viennent de sortir ou dorment (écart < 5) 
+    # et qui n'ont pas une réussite maximale.
+    theta_pool = df[(df['ecart'] < 5) & (df['reussite'] < 300)]
+    if len(theta_pool) < 5: theta_pool = df.sample(5) # Sécurité
+    theta = theta_pool.sample(5)['numero'].tolist()
+
+    return sorted(alpha), sorted(beta), sorted(theta)
+
+# --- 4. INTERFACE ---
+st.title("🧬 IA OMNIBUS V9.0")
+st.write(f"Analyse Multi-Flux Synchronisée | **Dernier Tirage (Loto/Euro) : 7-10-17-19-29-41**")
+
+# On définit le socle de calcul sur les derniers résultats connus
+derniers_resultats = [7, 10, 17, 19, 29, 41]
+
+if st.button("🌀 GÉNÉRER LES TROIS FLUX DE RÉSONANCE"):
+    alpha, beta, theta = engine_multi_flux(derniers_resultats)
     
-    return sorted(scores, key=scores.get, reverse=True)[:5]
-
-# --- 4. INTERFACE UTILISATEUR ---
-st.title("🧬 IA OMNIBUS V7.0 : Système Expert de Flux")
-st.write(f"Analyse Post-Tirage du **01/05/2026** | Statut : Synchronisé")
-
-# Résultats du tirage de ce vendredi (1er mai)
-derniers_resultats = [1, 3, 9, 11, 42]
-etoiles_sorties = [46, 47]
-
-tab1, tab2 = st.tabs(["🎯 GÉNÉRATEUR DE PRÉDICTIONS", "📊 MATRICE ANALYTIQUE"])
-
-with tab1:
-    c1, c2 = st.columns([2, 1])
+    col1, col2, col3 = st.columns(3)
     
-    with c1:
+    with col1:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("🔮 Prédiction Prochain Tirage")
-        st.write("Cible : EuroMillions Mardi 05 Mai")
-        
-        if st.button("LANCER L'ALGORITHME DE RÉSONANCE"):
-            top_numbers = engine_omnibus(derniers_resultats)
-            
-            # Affichage des boules
-            html_res = "".join([f"<div class='ball euro-ball'>{n}</div>" for n in sorted(top_numbers)])
-            st.markdown(html_res, unsafe_allow_html=True)
-            
-            st.write("---")
-            st.write("**Étoiles recommandées par affinité :**")
-            st.markdown("<div class='ball star-ball'>2</div><div class='ball star-ball'>10</div>", unsafe_allow_html=True)
-            st.success("Calcul terminé : Les coefficients d'annonciation ont été appliqués.")
+        st.markdown("<div class='strat-header alpha-title'>🎯 Flux ALPHA</div>", unsafe_allow_html=True)
+        st.caption("Stratégie : Tension & Rupture")
+        balls_html = "".join([f"<div class='ball alpha-ball'>{n}</div>" for n in alpha])
+        st.markdown(balls_html, unsafe_allow_html=True)
+        st.info("Cible les numéros en retard critique (ex: 32, 1).")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with c2:
+    with col2:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("💡 Diagnostic IA")
-        st.info(f"""
-            - **Numéros sortis :** {derniers_resultats}
-            - **Aspiration :** Le numéro 13 et le 32 sont en surtension.
-            - **Annonciation :** Le 42 étant sorti, il appelle ses affinités directes.
-        """)
+        st.markdown("<div class='strat-header beta-title'>🔥 Flux BÊTA</div>", unsafe_allow_html=True)
+        st.caption("Stratégie : Masse & Puissance")
+        balls_html = "".join([f"<div class='ball beta-ball'>{n}</div>" for n in beta])
+        st.markdown(balls_html, unsafe_allow_html=True)
+        st.info("Cible les piliers historiques (ex: 13, 22).")
         st.markdown("</div>", unsafe_allow_html=True)
 
-with tab2:
-    st.write("### 🧮 Matrice de Calcul Interne")
-    data_view = []
-    for n, s in db_expert.items():
-        data_view.append({
-            "Numéro": n,
-            "Réussite": s[0],
-            "Écart Actuel": s[2],
-            "Max Historique": s[3],
-            "Annoncé Par": s[5]
-        })
-    st.dataframe(pd.DataFrame(data_view).sort_values("Écart Actuel", ascending=False), use_container_width=True)
+    with col3:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<div class='strat-header theta-title'>🎲 Flux THÊTA</div>", unsafe_allow_html=True)
+        st.caption("Stratégie : Chaos & Surprise")
+        balls_html = "".join([f"<div class='ball theta-ball'>{n}</div>" for n in theta])
+        st.markdown(balls_html, unsafe_allow_html=True)
+        st.info("Cible l'imprévisible (numéros froids ou récents).")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 st.divider()
-st.caption("Moteur IA Omnibus V7.0 - Basé sur l'analyse des affinités historiques et des tensions de rupture.")
+st.write("### 📊 État de la Base de Données Omnibus")
+st.dataframe(df.sort_values('ecart', ascending=False), use_container_width=True)
+st.caption("Version 9.0 | Système Multi-Grilles pour couverture maximale du hasard.")
