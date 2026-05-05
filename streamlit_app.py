@@ -3,15 +3,27 @@ import pandas as pd
 import io
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="IA EXPERT V7 - MULTI-JEUX", layout="wide", page_icon="⚖️")
+st.set_page_config(page_title="IA EXPERT V9 - GÉNÉRATEUR", layout="wide", page_icon="💰")
 
-# --- 1. DERNIERS RÉSULTATS (À mettre à jour après chaque tirage) ---
+# --- 1. TIRAGES ET DONNÉES ---
 DERNIERS_LOTO = [4, 8, 15, 18, 46]
 DERNIERS_EURO = [26, 29, 41, 46, 47]
 
-# --- 2. DONNÉES STATISTIQUES (FUSIONNÉES) ---
-# Données Loto basées sur ton tableau (Extraits)
-loto_csv = """Numéro,Réussite totale,Forme générale,Écart maximum,Écart actuel,Annonceur_De
+euro_data = """Numéro,Réussite totale,Forme générale,Écart maximum,Écart actuel,Annonceur_De
+44,222,12,48,5,50
+42,220,10,50,0,12
+23,218,4,46,4,19
+19,216,5,43,7,26
+29,216,11,44,1,19
+32,178,4,47,36,25
+41,179,11,46,1,15
+3,188,3,65,0,1
+1,185,5,58,5,44
+27,205,10,70,8,39
+26,202,9,70,1,21
+47,182,9,82,0,3"""
+
+loto_data = """Numéro,Réussite totale,Forme générale,Écart maximum,Écart actuel,Annonceur_De
 41,322,8,41,1,17
 13,321,6,55,12,3
 22,314,9,50,4,26
@@ -23,80 +35,57 @@ loto_csv = """Numéro,Réussite totale,Forme générale,Écart maximum,Écart ac
 18,271,7,67,0,29
 46,281,4,42,0,18"""
 
-# Données EuroMillions basées sur ton tableau (Extraits)
-euro_csv = """Numéro,Réussite totale,Forme générale,Écart maximum,Écart actuel,Annonceur_De
-44,222,12,48,5,50
-42,220,10,50,0,12
-23,218,4,46,4,19
-19,216,5,43,7,26
-29,216,11,44,1,19
-32,178,4,47,36,25
-26,202,9,70,1,21
-47,182,9,82,0,3
-41,179,11,46,1,15
-46,172,7,66,0,17"""
-
-# --- 3. MOTEUR DE CALCUL EXPERT ---
-def calculer_scores(df, derniers_numeros, type_jeu):
+# --- 2. MOTEUR DE CALCUL ---
+def moteur_ia(df, tirage_jeu, type_jeu):
     df = df.copy()
-    max_num = 49 if type_jeu == "LOTO" else 50
-    
-    # A. Tension (Retard vs Historique)
+    max_range = 49 if type_jeu == "LOTO" else 50
     df['tension'] = (df['Écart actuel'] / df['Écart maximum'] * 100)
-    
-    # B. Bonus Voisinage
-    voisins = [n-1 for n in derniers_numeros] + [n+1 for n in derniers_numeros]
+    voisins = [n-1 for n in tirage_jeu] + [n+1 for n in tirage_jeu]
     df['bonus_voisin'] = df['Numéro'].apply(lambda x: 20 if x in voisins else 0)
-    
-    # C. Bonus Annonce (Basé sur tes colonnes "Annonceur_De")
-    appeles = df[df['Numéro'].isin(derniers_numeros)]['Annonceur_De'].tolist()
+    appeles = df[df['Numéro'].isin(tirage_jeu)]['Annonceur_De'].tolist()
     df['bonus_annonce'] = df['Numéro'].apply(lambda x: 25 if x in appeles else 0)
     
-    # D. Logique des Masses
-    poids_bas = sum(1 for n in derniers_numeros if n <= (max_num/2))
+    poids_bas = sum(1 for n in tirage_jeu if n <= (max_range/2))
     df['bonus_masse'] = 0
-    if poids_bas >= 4: df.loc[df['Numéro'] > (max_num/2), 'bonus_masse'] = 15
-    elif poids_bas <= 1: df.loc[df['Numéro'] <= (max_num/2), 'bonus_masse'] = 20
+    if poids_bas >= 4: df.loc[df['Numéro'] > (max_range/2), 'bonus_masse'] = 15
+    elif poids_bas <= 1: df.loc[df['Numéro'] <= (max_range/2), 'bonus_masse'] = 20
 
-    # Score Final
-    df['score'] = (df['tension'] * 0.4) + (df['Forme générale'] * 1.5) + df['bonus_voisin'] + df['bonus_annonce'] + df['bonus_masse']
-    return df.sort_values('score', ascending=False)
+    df['score_final'] = (df['tension'] * 0.4) + (df['Forme générale'] * 1.5) + df['bonus_voisin'] + df['bonus_annonce'] + df['bonus_masse']
+    return df.sort_values('score_final', ascending=False)
 
-# --- 4. INTERFACE ---
-st.title("🛰️ IA EXPERT V7 : Évaluation Croisée Loto & Euro")
+# --- 3. INTERFACE ---
+st.title("💰 IA GÉNÉRATEUR : Quels numéros jouer ?")
 
-tab1, tab2, tab3 = st.tabs(["🎰 LOTO", "🇪🇺 EURO", "🧠 ÉVALUATION CROISÉE"])
+df_l = pd.read_csv(io.StringIO(loto_data))
+df_e = pd.read_csv(io.StringIO(euro_data))
 
-with tab1:
-    df_l = pd.read_csv(io.StringIO(loto_csv))
-    res_l = calculer_scores(df_l, DERNIERS_LOTO, "LOTO")
-    st.header(f"Top Loto : {res_l['Numéro'].iloc[0]} (Score {res_l['score'].iloc[0]:.1f})")
-    st.bar_chart(res_l.head(10).set_index('Numéro')['score'])
-    st.dataframe(res_l[['Numéro', 'score', 'Écart actuel', 'bonus_annonce']].head(10))
+res_loto = moteur_ia(df_l, DERNIERS_LOTO, "LOTO")
+res_euro = moteur_ia(df_e, DERNIERS_EURO, "EURO")
 
-with tab2:
-    df_e = pd.read_csv(io.StringIO(euro_csv))
-    res_e = calculer_scores(df_e, DERNIERS_EURO, "EURO")
-    st.header(f"Top Euro : {res_e['Numéro'].iloc[0]} (Score {res_e['score'].iloc[0]:.1f})")
-    st.bar_chart(res_e.head(10).set_index('Numéro')['score'], color="#FF4B4B")
-    st.dataframe(res_e[['Numéro', 'score', 'Écart actuel', 'bonus_annonce']].head(10))
+col1, col2 = st.columns(2)
 
-with tab3:
-    st.header("🔍 Analyse des Points Chauds")
-    
-    # Comparaison des masses
-    m_loto = sum(1 for n in DERNIERS_LOTO if n <= 24)
-    m_euro = sum(1 for n in DERNIERS_EURO if n <= 25)
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric("Masse Basse Loto", f"{m_loto}/5", delta="Équilibré" if 2<=m_loto<=3 else "Déséquilibre")
-    with c2:
-        st.metric("Masse Basse Euro", f"{m_euro}/5", delta="Équilibré" if 2<=m_euro<=3 else "Déséquilibre", delta_color="inverse")
+with col1:
+    st.header("🎰 TICKET LOTO")
+    ticket_loto = res_loto.head(5)['Numéro'].tolist()
+    ticket_loto.sort()
+    st.subheader(f"Jouer : {', '.join(map(str, ticket_loto))}")
+    st.info(f"Probabilité de succès basée sur l'écart du n°{ticket_loto[0]}")
 
-    st.info("""
-    **Stratégie de Jeu suggérée :**
-    *   **Loto :** Le numéro 1 approche de son écart max historique (41/42). C'est la priorité n°1.
-    *   **Euro :** Déséquilibre total vers le haut. Il faut impérativement jouer des numéros entre 1 et 25 au prochain tirage.
-    *   **Transversal :** Le numéro 23 apparaît dans les deux statistiques comme une force d'annonce majeure.
-    """)
+with col2:
+    st.header("🇪🇺 TICKET EURO")
+    ticket_euro = res_euro.head(5)['Numéro'].tolist()
+    ticket_euro.sort()
+    st.subheader(f"Jouer : {', '.join(map(str, ticket_euro))}")
+    st.error(f"Alerte : Priorité zone BASSE (1-25) activée.")
+
+st.divider()
+
+# --- 4. ANALYSE DÉTAILLÉE DES CHOIX ---
+st.write("### 🧠 Pourquoi ces numéros ?")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Tension Max", f"N°{res_loto.iloc[0]['Numéro']}", "Score Critique")
+with c2:
+    st.metric("Annonce Forte", f"N°{res_euro.iloc[0]['Annonceur_De']}", "Succession")
+with c3:
+    st.metric("Compensation", "Zone Basse", "+20 pts bonus")
