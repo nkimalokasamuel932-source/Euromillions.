@@ -4,126 +4,120 @@ import io
 from collections import Counter
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="IA EXPERT V18.1 - FUSION TOTALE", layout="wide", page_icon="♾️")
+st.set_page_config(page_title="IA EXPERT V21 - SYNCHRO TOTALE", layout="wide", page_icon="🌐")
 
-# --- 1. HISTORIQUES OFFICIELS (LES 10 DERNIERS) ---
+# --- 1. BASE DE DONNÉES SYNCHRONISÉE (MAI 2026) ---
+
+# Derniers résultats Loto (MAJ: 06/05)
 HISTORIQUE_LOTO = [
-    ([7, 18, 27, 35, 48], [5]), ([4, 8, 15, 18, 46], [2]), ([10, 17, 19, 29, 41], [7]),
-    ([2, 3, 30, 31, 37], [8]), ([6, 15, 23, 27, 43], [4]), ([9, 17, 22, 25, 49], [3]),
-    ([2, 12, 16, 20, 26], [2]), ([30, 37, 38, 40, 43], [1]), ([2, 12, 21, 29, 33], [6]),
+    ([7, 18, 27, 35, 48], [5]),   # 6 Mai
+    ([4, 8, 15, 18, 46], [2]),    # 4 Mai
+    ([10, 17, 19, 29, 41], [7]),  # 2 Mai
+    ([2, 3, 30, 31, 37], [8]),    # 29 Avril
+    ([6, 15, 23, 27, 43], [4]),
+    ([9, 17, 22, 25, 49], [3]),
+    ([2, 12, 16, 20, 26], [2]),
+    ([30, 37, 38, 40, 43], [1]),
+    ([2, 12, 21, 29, 33], [6]),
     ([5, 22, 23, 24, 25], [10])
 ]
 
+# Derniers résultats Euro (MAJ: 08/05)
 HISTORIQUE_EURO = [
-    ([3, 4, 8, 20, 31], [1, 9]), ([3, 9, 42, 46, 47], [1, 11]), ([26, 29, 41, 46, 47], [8, 9]),
-    ([1, 2, 4, 7, 28], [5, 12]), ([10, 13, 14, 38, 41], [6, 9]), ([11, 14, 19, 36, 49], [6, 7]),
-    ([8, 27, 29, 46, 49], [2, 10]), ([5, 8, 10, 33, 38], [2, 7]), ([4, 10, 43, 44, 48], [2, 4]),
-    ([12, 16, 17, 18, 27], [1, 3])
+    ([2, 17, 19, 34, 37], [8, 11]), # 8 Mai - Tirage de ce soir
+    ([3, 4, 8, 20, 31], [1, 9]),    # 5 Mai
+    ([3, 9, 42, 46, 47], [1, 11]),  # 1er Mai
+    ([26, 29, 41, 46, 47], [8, 9]), # 28 Avril
+    ([1, 2, 4, 7, 28], [5, 12]),    # 14 Avril
+    ([10, 13, 14, 38, 41], [6, 9]), # 10 Avril
+    ([11, 14, 19, 36, 49], [6, 7]), # 7 Avril
+    ([8, 27, 29, 46, 49], [2, 10]), # 3 Avril
+    ([5, 8, 10, 33, 38], [2, 7]),    # 31 Mars
+    ([4, 10, 43, 44, 48], [2, 4])    # 27 Mars
 ]
 
-# --- 2. BASE DE DONNÉES EXPERT (LOTO & EURO) ---
-loto_data = """Numéro,Réussite,FormeG,EcartMax,EcartActuel,Affinite,AnnoncePar,AnnonciateurDe
-41,322,8,41,2,16,13,17
-13,321,5,55,13,3,31,3
-1,291,3,42,42,49,34,6
-18,272,10,67,0,13,46,29
-2,284,9,55,3,13,45,17
-17,284,10,58,2,30,39,41
-27,291,4,63,0,4,18,30
-7,294,7,52,0,11,13,12
-28,291,6,53,17,40,11,22
-19,272,6,119,2,29,7,11
-15,312,5,46,1,24,10,23"""
+# --- 2. MATRICE DE PUISSANCE (LOTO & EURO) ---
+loto_stats = """Numéro,Réussite,EcartMax,EcartActuel,AnnoncePar,AnnonciateurDe
+1,291,42,42,34,6
+13,321,55,13,31,3
+18,272,67,0,46,29
+41,322,41,2,13,17
+2,284,55,3,45,9
+19,272,119,2,7,11
+28,291,53,17,11,22"""
 
-stats_globales_euro = {
-    42: 12.42, 35: 12.42, 21: 12.27, 29: 11.96, 34: 11.66, 10: 11.35, 13: 11.20, 
-    19: 11.04, 47: 10.89, 3: 8.44, 4: 8.74, 8: 9.51, 31: 8.13, 20: 10.28, 1: 7.21
+euro_stats = {
+    42: 12.42, 47: 10.89, 21: 12.27, 34: 11.66, 19: 11.04, 
+    2: 9.97, 17: 10.12, 32: 9.36, 44: 10.74, 3: 8.44
 }
 
-# --- 3. MOTEUR DE RÉSONANCE ET SUPERPOSITION V18.1 ---
-def moteur_v18_fusion(df_stats, historique, type_jeu):
-    df = df_stats.copy()
-    tous_sortis = [n for tirage, etoiles in historique for n in tirage]
+# --- 3. MOTEUR DE SYNCHRONISATION V21 ---
+def moteur_v21_synchro(stats_df, historique, type_jeu):
+    df = stats_df.copy()
+    tous_sortis = [n for t, e in historique for n in t]
     counts = Counter(tous_sortis)
-    dernier_tirage = historique[0][0]
-    moyenne_pos = sum(dernier_tirage) / len(dernier_tirage)
+    dernier = historique[0][0]
     
-    # A. Score de Résonance (Base Solide + Activité)
-    def calculer_resonance(row):
-        num = row['Numéro']
-        freq_10 = counts.get(num, 0)
-        
-        # Bonus Base Solide (Numéros actifs sur les 10 derniers)
-        bonus_base = 35 if 1 <= freq_10 <= 3 else (10 if freq_10 > 3 else 0)
-        
-        # Puissance historique (% Euro ou Réussite Loto)
-        if type_jeu == "EURO":
-            poids_hist = stats_globales_euro.get(num, 9.0) * 3
-        else:
-            poids_hist = row.get('Réussite', 0) / 25
-
-        # B. Observation de Position (Compensation de Masse)
-        bonus_pos = 0
-        if moyenne_pos > 28 and num <= 22: bonus_pos = 30 # Tirage haut -> focus bas
-        if moyenne_pos < 22 and num >= 30: bonus_pos = 30 # Tirage bas -> focus haut
-
-        # C. Alerte Rupture (Ecart Record)
-        bonus_rupture = 0
-        if row.get('EcartActuel', 0) >= row.get('EcartMax', 0) and row.get('EcartMax', 0) > 0:
-            bonus_rupture = 70
-            
-        return (freq_10 * 12) + bonus_base + poids_hist + bonus_pos + bonus_rupture
-
-    df['score_resonance'] = df.apply(calculer_resonance, axis=1)
+    # 1. Poids des Bases Solides (Sorties sur les 10 derniers)
+    df['base_solide'] = df['Numéro'].apply(lambda x: counts.get(x, 0) * 50)
     
-    # D. Liens d'Affinités (Succession)
-    df['bonus_liens'] = 0
-    for n in dernier_tirage:
-        if 'AnnoncePar' in df.columns:
-            df.loc[df['AnnoncePar'] == n, 'bonus_liens'] += 25
-        if 'AnnonciateurDe' in df.columns:
-            df.loc[df['AnnonciateurDe'] == n, 'bonus_liens'] += 20
+    # 2. Poids de Forme (Répétition du dernier tirage)
+    df['forme_flash'] = df['Numéro'].apply(lambda x: 40 if x in dernier else 0)
+    
+    # 3. Poids de Tension (Ecart Critique)
+    if 'EcartActuel' in df.columns:
+        df['tension'] = (df['EcartActuel'] / df['EcartMax'] * 100) * 2
+    else:
+        df['tension'] = 0
 
-    df['score_final'] = df['score_resonance'] + df['bonus_liens']
-    return df.sort_values('score_final', ascending=False)
+    # 4. Compensation de Masse
+    moyenne_dernier = sum(dernier) / 5
+    df['compensation'] = 0
+    if moyenne_dernier > 28: # Si trop haut, on booste le bas
+        df.loc[df['Numéro'] < 25, 'compensation'] = 30
+    elif moyenne_dernier < 22: # Si trop bas, on booste le haut
+        df.loc[df['Numéro'] > 25, 'compensation'] = 30
+
+    # Score Final
+    df['score_total'] = df['base_solide'] + df['forme_flash'] + df['tension'] + df['compensation']
+    return df.sort_values('score_total', ascending=False)
 
 # --- 4. INTERFACE ---
-st.title("🛰️ IA EXPERT V18.1 - RÉSONANCE & SUPERPOSITION")
-st.markdown("### Analyse des 10 derniers tirages + Puissance Historique")
+st.title("🛰️ IA EXPERT V21 - CONSOLE SYNCHRONISÉE")
+st.write(f"État du système : **Opérationnel** | Dernière synchro : **Euro 08/05**")
 
-# Préparation DataFrames
-df_loto = pd.read_csv(io.StringIO(loto_data))
-df_euro = pd.DataFrame(list(stats_globales_euro.items()), columns=['Numéro', 'Pourcentage'])
-for col in ['EcartActuel', 'EcartMax', 'AnnoncePar', 'AnnonciateurDe']: df_euro[col] = 0
-# Correction écarts Euro connus
-df_euro.loc[df_euro['Numéro'] == 32, ['EcartActuel', 'EcartMax']] = [38, 47]
-df_euro.loc[df_euro['Numéro'] == 21, ['EcartActuel', 'EcartMax']] = [32, 55]
+# Traitement Loto
+df_loto_input = pd.read_csv(io.StringIO(loto_stats))
+res_loto = moteur_v21_synchro(df_loto_input, HISTORIQUE_LOTO, "LOTO")
 
-# Calculs
-res_loto = moteur_v18_fusion(df_loto, HISTORIQUE_LOTO, "LOTO")
-res_euro = moteur_v18_fusion(df_euro, HISTORIQUE_EURO, "EURO")
+# Traitement Euro
+df_euro_input = pd.DataFrame(list(euro_stats.items()), columns=['Numéro', 'Pct'])
+# On simule les colonnes manquantes pour l'Euro pour le moteur
+df_euro_input['EcartActuel'] = 0
+df_euro_input['EcartMax'] = 0
+df_euro_input.loc[df_euro_input['Numéro'] == 32, ['EcartActuel', 'EcartMax']] = [38, 47]
+df_euro_input.loc[df_euro_input['Numéro'] == 21, ['EcartActuel', 'EcartMax']] = [32, 55]
+
+res_euro = moteur_v21_synchro(df_euro_input, HISTORIQUE_EURO, "EURO")
 
 c1, c2 = st.columns(2)
 
 with c1:
-    st.header("🎰 PRONOSTIC LOTO")
+    st.header("🎰 LOTO (Prochain Tirage)")
     t_l = res_loto.head(5)['Numéro'].tolist()
     t_l.sort()
     st.success(f"### 👉 {', '.join(map(str, t_l))}")
-    st.info(f"**Analyse :** Moyenne dernier tirage élevée ({sum(HISTORIQUE_LOTO[0][0])/5}). Le moteur privilégie la zone basse et les bases solides.")
-    if 1 in t_l: st.error("🚨 ALERTE : Rupture statistique imminente sur le n°1.")
+    st.write("**Analyse :** Focus sur la rupture du n°1 et la répétition du 18.")
 
 with c2:
-    st.header("🇪🇺 PRONOSTIC EURO")
+    st.header("🇪🇺 EURO (Prochain Tirage)")
     t_e = res_euro.head(5)['Numéro'].tolist()
     t_e.sort()
     st.error(f"### 👉 {', '.join(map(str, t_e))}")
-    st.info(f"**Analyse :** Moyenne dernier tirage basse ({sum(HISTORIQUE_EURO[0][0])/5}). Le moteur réinjecte les fortes puissances historiques (%).")
+    st.write("**Analyse :** Ancrage sur les bases solides (19, 34) et retour zone haute.")
 
 st.divider()
-with st.expander("📊 Détails de la Résonance (Top 10)"):
-    col_a, col_b = st.columns(2)
-    col_a.write("**Loto :**")
-    col_a.dataframe(res_loto[['Numéro', 'score_final', 'score_resonance', 'bonus_liens']].head(10))
-    col_b.write("**Euro :**")
-    col_b.dataframe(res_euro[['Numéro', 'score_final', 'score_resonance']].head(10))
+st.subheader("📊 Tableau de Bord des Fréquences (10 derniers tirages)")
+st.write("Numéros les plus actifs actuellement :")
+all_active = Counter([n for t, e in HISTORIQUE_LOTO + HISTORIQUE_EURO for n in t])
+st.bar_chart(pd.DataFrame.from_dict(all_active, orient='index', columns=['Sorties']).head(20))
