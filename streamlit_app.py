@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
-import io
 from collections import Counter
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="IA V23 - RÉSONANCE & SORTIES", layout="wide", page_icon="🔥")
+st.set_page_config(page_title="IA MOMENTUM - 100% SORTIES", layout="wide", page_icon="🎯")
 
-# --- 1. SYNCHRONISATION DES DERNIERS RÉSULTATS (MAI 2026) ---
+# --- 1. HISTORIQUES SYNCHRONISÉS (LES 10 DERNIERS) ---
+# Tirages réels au 10 Mai 2026
 HISTORIQUE_LOTO = [
     ([16, 21, 25, 26, 31], [0]),  # 9 Mai 
     ([7, 18, 27, 35, 48], [5]),   # 6 Mai
@@ -33,74 +33,59 @@ HISTORIQUE_EURO = [
     ([4, 10, 43, 44, 48], [2, 4])
 ]
 
-# --- 2. MATRICES DE PROBABILITÉS FOURNIES ---
-prob_loto = {
-    1: 80.4, 32: 80.4, 11: 77.0, 42: 71.5, 14: 71.5, 34: 68.8, 39: 68.8, 36: 68.8, 44: 68.8,
-    13: 63.3, 24: 57.4, 20: 51.8, 28: 48.6, 49: 46.3, 40: 46.3, 5: 44.0, 45: 44.0, 47: 42.5,
-    9: 40.4, 35: 40.4, 4: 37.4, 41: 37.4, 6: 37.4, 15: 28.7, 27: 28.7, 37: 28.7, 19: 27.0, 
-    26: 16.8, 18: 9.6, 25: 9.6, 21: 6.7, 16: 4.9
-}
+# --- 2. MATRICES DE PROBABILITÉS (VOS DONNÉES) ---
+prob_loto = {1: 80.4, 32: 80.4, 11: 77.0, 42: 71.5, 14: 71.5, 34: 68.8, 39: 68.8, 36: 68.8, 44: 68.8, 13: 63.3, 24: 57.4, 20: 51.8, 28: 48.6, 49: 46.3, 40: 46.3, 5: 44.0, 45: 44.0, 47: 42.5, 9: 40.4, 35: 40.4, 4: 37.4, 41: 37.4, 6: 37.4, 15: 28.7, 27: 28.7, 37: 28.7, 19: 27.0, 7: 25.5, 31: 22.8, 12: 18.3, 22: 18.3, 3: 18.3, 48: 17.0, 10: 17.0, 43: 16.8, 26: 16.8, 23: 13.0, 17: 12.3, 18: 9.6, 30: 9.6, 25: 9.6, 29: 9.4, 2: 6.7, 21: 6.7, 16: 4.9}
+prob_euro = {21: 79.8, 32: 79.8, 39: 76.3, 35: 70.6, 7: 67.9, 15: 67.9, 18: 62.2, 6: 62.2, 43: 56.3, 50: 53.4, 48: 53.4, 24: 51.9, 11: 50.9, 22: 50.9, 45: 50.9, 25: 50.9, 30: 50.9, 36: 50.9, 33: 47.5, 20: 45.2, 9: 45.2, 5: 41.6, 12: 41.6, 31: 39.3, 1: 39.3, 23: 39.3, 38: 36.4, 49: 36.4, 42: 34.8, 27: 33.4, 3: 27.8, 2: 27.8, 34: 26.0, 44: 24.6, 8: 24.6, 37: 17.6, 40: 17.5, 16: 17.3, 10: 16.4, 29: 16.0, 17: 14.8, 19: 11.6, 26: 11.6, 14: 9.0, 4: 9.0, 13: 7.9, 46: 6.2, 28: 5.1, 47: 2.1, 41: 1.6}
 
-prob_euro = {
-    21: 79.8, 32: 79.8, 39: 76.3, 35: 70.6, 7: 67.9, 15: 67.9, 18: 62.2, 6: 62.2,
-    43: 56.3, 50: 53.4, 48: 53.4, 24: 51.9, 11: 50.9, 22: 50.9, 36: 50.9, 20: 45.2,
-    31: 39.3, 1: 39.3, 42: 34.8, 27: 33.4, 3: 27.8, 2: 27.8, 34: 26.0, 8: 24.6, 
-    17: 14.8, 19: 11.6, 47: 2.1
-}
-
-# --- 3. MOTEUR DE DÉCISION V23 ---
-def moteur_v23_priorite_sorties(historique, probas_dict):
+# --- 3. MOTEUR "MOMENTUM" (FILTRE DE SORTIE OBLIGATOIRE) ---
+def moteur_momentum(historique, probas):
+    # On isole uniquement les numéros sortis sur les 10 derniers
     tous_sortis = [n for t, e in historique for n in t]
     counts = Counter(tous_sortis)
-    dernier = historique[0][0]
+    ensemble_sortis = set(tous_sortis) # Unique list
     
     data = []
-    for num, p in probas_dict.items():
-        # A. Bonus de Sorties Récentes (L'élément clé demandé)
-        # On donne 60 points par sortie sur les 10 derniers tirages
+    for num in ensemble_sortis:
+        # 1. On récupère la probabilité (si absente de la matrice, on met 0)
+        p = probas.get(num, 0)
+        
+        # 2. Score de Fréquence (Poids lourd)
         nb_sorties = counts.get(num, 0)
-        bonus_sorties = nb_sorties * 60
+        score_frequence = nb_sorties * 100
         
-        # B. Score Probabilité Pondéré
-        score_p = p * 1.2
+        # 3. Score de Probabilité relative
+        score_p = p * 2
         
-        # C. Bonus de Répétition Flash (Dernier tirage)
-        bonus_flash = 50 if num in dernier else 0
-        
-        # D. Sécurité Rupture (Pour le n°1 Loto ou n°21 Euro)
-        # Si proba > 75% et 0 sortie, on booste pour la sortie imminente
-        bonus_rupture = 150 if (p > 75 and nb_sorties == 0) else 0
+        total = score_frequence + score_p
+        data.append({"Numéro": num, "Score": total, "Sorties_10j": nb_sorties, "Proba": p})
 
-        score_final = bonus_sorties + score_p + bonus_flash + bonus_rupture
-        data.append({"Numéro": num, "Score": score_final, "Sorties": nb_sorties, "Proba": p})
-
-    return pd.DataFrame(data).sort_values("Score", ascending=False)
+    df = pd.DataFrame(data).sort_values("Score", ascending=False)
+    return df
 
 # --- 4. INTERFACE ---
-st.title("🛰️ IA EXPERT V23 - PRIORITÉ SORTIES RÉCENTES")
-st.markdown("### Algorithme synchronisé sur les 10 derniers tirages + Matrices de Probabilités")
+st.title("🛰️ IA MOMENTUM - CIRCUIT FERMÉ")
+st.warning("⚠️ Règle stricte : Seuls les numéros apparus sur les 10 derniers tirages sont analysés.")
 
-res_loto = moteur_v23_priorite_sorties(HISTORIQUE_LOTO, prob_loto)
-res_euro = moteur_v23_priorite_sorties(HISTORIQUE_EURO, prob_euro)
+res_loto = moteur_momentum(HISTORIQUE_LOTO, prob_loto)
+res_euro = moteur_momentum(HISTORIQUE_EURO, prob_euro)
 
 c1, c2 = st.columns(2)
 
 with c1:
-    st.header("🎰 LOTO : FOCUS FORMES")
-    # Sélection des 5 meilleurs scores
+    st.header("🎰 LOTO (Top Forme)")
     sel_l = res_loto.head(5)['Numéro'].tolist()
     sel_l.sort()
     st.success(f"### 👉 {', '.join(map(str, sel_l))}")
-    st.write("**Détails des Bases :**")
-    st.dataframe(res_loto[['Numéro', 'Score', 'Sorties', 'Proba']].head(5))
+    st.write("**Base de calcul (Uniquement sorties récentes) :**")
+    st.dataframe(res_loto.head(10))
 
 with c2:
-    st.header("🇪🇺 EURO : FOCUS FORMES")
+    st.header("🇪🇺 EURO (Top Forme)")
     sel_e = res_euro.head(5)['Numéro'].tolist()
     sel_e.sort()
     st.error(f"### 👉 {', '.join(map(str, sel_e))}")
-    st.write("**Détails des Bases :**")
-    st.dataframe(res_euro[['Numéro', 'Score', 'Sorties', 'Proba']].head(5))
+    st.write("**Base de calcul (Uniquement sorties récentes) :**")
+    st.dataframe(res_euro.head(10))
 
 st.divider()
-st.info("💡 **Analyse de l'expert :** Ce code favorise les numéros qui 'bougent' (ceux qui ont déjà des sorties au compteur) tout en gardant le n°1 (Loto) et le n°21 (Euro) en sécurité grâce au bonus de rupture de probabilité (150 pts).")
+st.info("💡 **Explication technique :** Le numéro 1 (Loto) ou le 21 (Euro) ont été **exclus** de cette liste s'ils ne sont pas sortis récemment, car ton choix est de privilégier la répétition et le momentum plutôt que l'écart.")
