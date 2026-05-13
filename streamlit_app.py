@@ -4,10 +4,10 @@ from collections import Counter
 import io
 import math
 
-# --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="IA V33 - Circuit Fermé", layout="wide")
+# --- 1. CONFIGURATION ET STYLE ---
+st.set_page_config(page_title="IA V33 - Pronostics Loto & Euro", layout="wide")
 
-# --- 1. DONNÉES MISES À JOUR (INCLUT LE 13 MAI) ---
+# --- 2. BASE DE DONNÉES HISTORIQUE (MISE À JOUR 13 MAI) ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
 Loto,2026-05-13,17,35,38,41,46,2,0
 Loto,2026-05-11,17,18,30,34,39,0,0
@@ -30,75 +30,73 @@ EuroMillions,2026-04-17,11,14,19,36,49,6,7
 EuroMillions,2026-04-14,8,27,29,46,49,2,10
 EuroMillions,2026-04-10,5,8,10,33,38,2,7"""
 
-# --- 2. FONCTIONS MATHÉMATIQUES ---
+# --- 3. MOTEUR MATHÉMATIQUE V33 ---
 def calcul_score_poisson(frequence_actuelle, est_loto=True):
-    lmbda = 1.02 if est_loto else 1.00
+    # Lambda calculé sur 10 tirages
+    lmbda = 1.02 if est_loto else 1.00 
     k_plus_un = frequence_actuelle + 1
     prob = (math.pow(lmbda, k_plus_un) * math.exp(-lmbda)) / math.factorial(k_plus_un)
     return prob
 
-def generer_tirage_v33(df_hist, jeu_type):
+def generer_pronostic(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
-    # On prend les 10 derniers du jeu sélectionné
-    df_recent = df_hist[df_hist['Jeu'] == jeu_type].head(10)
+    # Filtrage strict du Circuit Fermé (10 derniers tirages)
+    df_jeu = df_hist[df_hist['Jeu'] == jeu_type].head(10)
     
-    # Circuit Fermé
-    nums_fermes = df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten()
+    # Analyse Numéros (N1-N5)
+    nums_fermes = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten()
     stats = Counter(nums_fermes)
-    
-    # Rotation (Dernier tirage)
-    dernier_tirage = set(df_recent.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']])
+    dernier_tirage = set(df_jeu.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']])
     
     candidats = []
     for num, freq in stats.items():
         score_p = calcul_score_poisson(freq, est_loto)
-        poids_final = score_p * 100
+        poids = score_p * 100
+        if num in dernier_tirage: poids *= 0.4 # Rotation
         
-        # Pénalité de rotation si le numéro est sorti au dernier tirage
-        if num in dernier_tirage:
-            poids_final *= 0.4 
-
-        zone = (num // 10) * 10
-        candidats.append({
-            "Numero": int(num),
-            "Sorties_10j": freq,
-            "Zone": zone,
-            "Score_V33": round(poids_final, 2)
-        })
+        candidats.append({"Numero": int(num), "Zone": (num//10)*10, "Score": poids})
     
-    df_candidats = pd.DataFrame(candidats).sort_values(by="Score_V33", ascending=False)
-    
-    # Sélection finale équilibrée
-    selection = []
-    zones_utilisees = set()
-    
-    for _, row in df_candidats.iterrows():
-        if row['Zone'] not in zones_utilisees and len(selection) < 5:
-            selection.append(int(row['Numero']))
-            zones_utilisees.add(row['Zone'])
+    # Sélection Numéros
+    df_c = pd.DataFrame(candidats).sort_values(by="Score", ascending=False)
+    final_n = []
+    zones_pries = set()
+    for _, r in df_c.iterrows():
+        if r['Zone'] not in zones_pries and len(final_n) < 5:
+            final_n.append(int(r['Numero']))
+            zones_pries.add(r['Zone'])
+    for _, r in df_c.iterrows():
+        if r['Numero'] not in final_n and len(final_n) < 5:
+            final_n.append(int(r['Numero']))
             
-    for _, row in df_candidats.iterrows():
-        if row['Numero'] not in selection and len(selection) < 5:
-            selection.append(int(row['Numero']))
-            
-    return sorted(selection), df_candidats
+    # Analyse Étoiles / Chance (Basé sur Circuit Fermé également)
+    e_cols = ['E1', 'E2'] if not est_loto else ['E1']
+    stars_ferme = df_jeu[e_cols].values.flatten()
+    # On retire les zéros (cas du Loto E2)
+    stars_ferme = [s for s in stars_ferme if s > 0]
+    stats_s = Counter(stars_ferme)
+    final_s = sorted(stats_s, key=stats_s.get, reverse=True)
+    
+    return sorted(final_n), final_s[:2] if not est_loto else final_s[:1], df_c
 
-# --- 3. AFFICHAGE DE L'INTERFACE ---
-st.title("🛡️ IA V33 - CIRCUIT FERMÉ & POISSON")
-
+# --- 4. INTERFACE UTILISATEUR ---
+st.title("🔬 SYSTÈME EXPERT IA V33")
 df = pd.read_csv(io.StringIO(csv_data))
-choix = st.sidebar.radio("Sélectionner le jeu :", ["Loto", "EuroMillions"])
 
-pronostic, analyse = generer_tirage_v33(df, choix)
+# Affichage côte à côte des deux jeux
+col_loto, col_euro = st.columns(2)
 
-# Panneau principal
-st.header(f"🎯 Pronostic pour le prochain tirage {choix}")
-st.subheader(f"Numéros suggérés : {pronostic}")
-if choix == "EuroMillions":
-    st.write("**Étoiles suggérées : 2 - 9**")
-else:
-    st.write("**Numéro Chance suggéré : 6**")
+with col_loto:
+    st.header("🎰 LOTO")
+    n_loto, s_loto, an_loto = generer_pronostic(df, "Loto")
+    st.success(f"**NUMÉROS :** {n_loto}")
+    st.success(f"**CHANCE :** {s_loto}")
+    st.dataframe(an_loto[['Numero', 'Score']].head(8), hide_index=True)
 
-st.divider()
-st.write("### 📊 Analyse détaillée (Circuit Fermé)")
-st.dataframe(analyse, use_container_width=True, hide_index=True)
+with col_euro:
+    st.header("🇪🇺 EUROMILLIONS")
+    n_euro, s_euro, an_euro = generer_pronostic(df, "EuroMillions")
+    st.error(f"**NUMÉROS :** {n_euro}")
+    st.error(f"**ÉTOILES :** {s_euro}")
+    st.dataframe(an_euro[['Numero', 'Score']].head(8), hide_index=True)
+
+st.info("💡 **Note technique :** Ce code utilise la Loi de Poisson pour détecter la maturité des numéros au sein de votre circuit fermé de 10 tirages.")
