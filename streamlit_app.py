@@ -6,9 +6,9 @@ import math
 import numpy as np
 
 # --- 1. CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="IA V37 - Matrice de Couverture", layout="wide")
+st.set_page_config(page_title="IA V38 - Synthèse et Grilles Finales", layout="wide")
 
-# --- 2. HISTORIQUE EN CIRCUIT FERMÉ (MISES À JOUR INCLUSES) ---
+# --- 2. HISTORIQUE EN CIRCUIT FERMÉ ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
 Loto,2026-05-16,1,12,30,32,34,6,0
 EuroMillions,2026-05-15,3,10,38,41,43,2,9
@@ -31,7 +31,7 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. MOTEUR CINÉTIQUE ---
+# --- 3. MOTEUR MATHÉMATIQUE ---
 def analyser_cinetique(df_jeu, total_numeros=50):
     historique_tirages = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
     ecarts = {i: [] for i in range(1, total_numeros + 1)}
@@ -58,20 +58,18 @@ def analyser_cinetique(df_jeu, total_numeros=50):
             
     return scores_cinetiques
 
-# --- 4. SÉLECTION MATRICIELLE PAR ZONE ---
-def generer_matrice_v37(df_hist, jeu_type):
+# --- 4. SELECTION ET SYNTHÈSE DES GRILLES ---
+def generer_jeux_v38(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
     max_num = 49 if est_loto else 50
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type]
     
-    # Base cinétique & Éco-système de résonance
     scores_cinetiques = analyser_cinetique(df_jeu, max_num)
     df_recent = df_jeu.head(10)
     
-    # OBLIGATION STRICTE : Uniquement les numéros déjà sortis dans les 10 derniers tirages
+    # Uniquement la liste fermée des 10 derniers jours
     nums_deja_sortis = set(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
-    # Résonance avec l'autre jeu
     autre_jeu = "EuroMillions" if est_loto else "Loto"
     df_autre = df_hist[df_hist['Jeu'] == autre_jeu].head(1)
     nums_resonance = set(df_autre.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']]) if not df_autre.empty else set()
@@ -80,26 +78,49 @@ def generer_matrice_v37(df_hist, jeu_type):
     for num in nums_deja_sortis:
         score_base = scores_cinetiques.get(num, 5.0)
         poids = score_base * 10
-        
-        if num in nums_resonance: poids *= 1.40  # Bonus Résonance Croisée (+40%)
-        
-        # Détermination exacte de la zone (0, 10, 20, 30, 40)
+        if num in nums_resonance: poids *= 1.40
         zone = (num // 10) * 10
-        candidats.append({"Numero": int(num), "Zone": zone, "Score": round(poids, 2)})
+        candidats.append({"Numero": int(num), "Zone": zone, "Score": poids})
         
     df_c = pd.DataFrame(candidats)
     
-    # Extraction stricte de 3 numéros par zone (uniquement parmi ceux qui sont sortis)
-    matrice_resultat = {}
+    # Étape A : Extraire les blocs de zones (V37)
+    matrice_zones = {}
     les_zones = [0, 10, 20, 30, 40]
-    
     for z in les_zones:
-        # On filtre les numéros de la zone actuelle, triés par le meilleur score
         df_zone = df_c[df_c['Zone'] == z].sort_values(by="Score", ascending=False)
-        # On prend les 3 premiers (ou moins si la zone n'a pas assez de numéros sortis dans les 10j)
-        matrice_resultat[z] = df_zone['Numero'].head(3).tolist()
+        matrice_zones[z] = df_zone['Numero'].head(3).tolist()
         
-    # Analyse Étoiles / Chance (Reste inchangé)
+    # Étape B : Mélanger et croiser les zones pour créer 2 propositions de grilles distinctes
+    grille_1 = []
+    grille_2 = []
+    
+    # Ordre de priorité des zones à mélanger pour équilibrer
+    ordre_zones_g1 = [0, 20, 40, 10, 30]
+    ordre_zones_g2 = [30, 10, 40, 20, 0]
+    
+    # Construction Grille 1 (Prend le premier choix disponible de chaque zone de sa liste)
+    for z in ordre_zones_g1:
+        if len(matrice_zones[z]) >= 1:
+            grille_1.append(matrice_zones[z][0])
+            
+    # Construction Grille 2 (Prend le deuxième ou premier choix disponible)
+    for z in ordre_zones_g2:
+        if len(matrice_zones[z]) >= 2:
+            grille_2.append(matrice_zones[z][1])
+        elif len(matrice_zones[z]) == 1:
+            grille_2.append(matrice_zones[z][0])
+            
+    # Ajustements de sécurité si les listes font moins de 5 numéros
+    tous_candidats_tries = df_c.sort_values(by="Score", ascending=False)['Numero'].tolist()
+    while len(grille_1) < 5 for _ in range(1):
+        for n in tous_candidats_tries:
+            if n not in grille_1 and len(grille_1) < 5: grille_1.append(n)
+    while len(grille_2) < 5 for _ in range(1):
+        for n in tous_candidats_tries:
+            if n not in grille_2 and n not in grille_1 and len(grille_2) < 5: grille_2.append(n)
+            
+    # Analyse Étoiles / Chance
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
     stars_ferme = df_recent[e_cols].values.flatten()
     stars_ferme = [s for s in stars_ferme if s > 0]
@@ -112,34 +133,50 @@ def generer_matrice_v37(df_hist, jeu_type):
         stars_candidats.append({"Etoile": star, "Score": score_s})
         
     df_s = pd.DataFrame(stars_candidats).sort_values(by="Score", ascending=False)
-    final_s = df_s['Etoile'].head(2).tolist() if not est_loto else df_s['Etoile'].head(1).tolist()
+    final_s = df_s['Etoile'].head(4).tolist()
     
-    return matrice_resultat, sorted(final_s), df_c.sort_values(by=["Zone", "Score"], ascending=[True, False])
+    # Attribution des étoiles/chances aux grilles
+    if est_loto:
+        s_g1 = [final_s[0]] if len(final_s) >= 1 else [6]
+        s_g2 = [final_s[1]] if len(final_s) >= 2 else [s_g1[0]]
+    else:
+        s_g1 = final_s[:2] if len(final_s) >= 2 else [2, 9]
+        s_g2 = final_s[2:4] if len(final_s) >= 4 else [5, 7]
 
-# --- 5. INTERFACE ET RÉSULTATS ---
-st.title("🛡️ IA V37 - MATRICE DE COUVERTURE GLOBALE (3 NUMÉROS PAR ZONE)")
-st.write("Tous les numéros présentés ci-dessous proviennent **exclusivement** du circuit fermé des 10 derniers tirages.")
+    return sorted(grille_1), sorted(grille_2), sorted(s_g1), sorted(s_g2), matrice_zones
+
+# --- 5. INTERFACE UTILISATEUR ---
+st.title("🎯 IA V38 - COMBINATOIRE ET PROPOSITIONS DE JEUX FINALES")
+st.write("Le système a regroupé les matrices de zones pour fusionner les meilleurs potentiels cinétiques.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 MATRICE LOTO")
-    matrice_l, s_loto, _ = generer_matrice_v37(df, "Loto")
+    st.header("🎰 GRILLES LOTO PROPOSÉES")
+    g1_l, g2_l, c1_l, c2_l, mat_l = generer_jeux_v38(df, "Loto")
     
-    for zone, nums in matrice_l.items():
-        nom_zone = "Zone 0 à 9" if zone == 0 else f"Zone {zone} à {zone+9}"
-        st.success(f"**{nom_zone} :** {nums if nums else 'Aucun numéro sorti dans les 10j'}")
-    st.success(f"**NUMÉROS CHANCE :** {s_loto}")
+    st.subheader("💡 Proposition Principale (Grille 1)")
+    st.success(f"**NUMÉROS :** {g1_l}  |  **CHANCE :** {c1_l}")
+    
+    st.subheader("🔮 Proposition Alternative (Grille 2)")
+    st.success(f"**NUMÉROS :** {g2_l}  |  **CHANCE :** {c2_l}")
+    
+    with st.expander("Voir les blocs sources (Matrice Loto)"):
+        st.write(mat_l)
 
 with col_euro:
-    st.header("🇪🇺 MATRICE EUROMILLIONS")
-    matrice_e, s_euro, _ = generer_matrice_v37(df, "EuroMillions")
+    st.header("🇪🇺 GRILLES EUROMILLIONS PROPOSÉES")
+    g1_e, g2_e, c1_e, c2_e, mat_e = generer_jeux_v38(df, "EuroMillions")
     
-    for zone, nums in matrice_e.items():
-        nom_zone = "Zone 0 à 9" if zone == 0 else f"Zone {zone} à {zone+9}"
-        st.error(f"**{nom_zone} :** {nums if nums else 'Aucun numéro sorti dans les 10j'}")
-    st.error(f"**ÉTOILES :** {s_euro}")
+    st.subheader("💡 Proposition Principale (Grille 1)")
+    st.error(f"**NUMÉROS :** {g1_e}  |  **ÉTOILES :** {c1_e}")
+    
+    st.subheader("🔮 Proposition Alternative (Grille 2)")
+    st.error(f"**NUMÉROS :** {c2_e}  |  **ÉTOILES :** {c2_e}")
+    
+    with st.expander("Voir les blocs sources (Matrice EuroMillions)"):
+        st.write(mat_e)
 
 st.divider()
-st.info("💡 **Principe de couverture V37 :** En choisissant 3 numéros par zone parmi l'historique récent, vous êtes armé pour intercepter les poussées groupées (triplés) sur n'importe quelle dizaine.")
+st.caption("🛡️ Sécurité V38 active : Tous les numéros ci-dessus se trouvaient obligatoirement dans les 10 derniers tirages réels.")
