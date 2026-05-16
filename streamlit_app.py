@@ -67,7 +67,7 @@ def generer_jeux_v38(df_hist, jeu_type):
     scores_cinetiques = analyser_cinetique(df_jeu, max_num)
     df_recent = df_jeu.head(10)
     
-    # Uniquement la liste fermée des 10 derniers jours
+    # Uniquement la liste fermée des 10 derniers tirages
     nums_deja_sortis = set(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
     autre_jeu = "EuroMillions" if est_loto else "Loto"
@@ -99,26 +99,29 @@ def generer_jeux_v38(df_hist, jeu_type):
     ordre_zones_g1 = [0, 20, 40, 10, 30]
     ordre_zones_g2 = [30, 10, 40, 20, 0]
     
-    # Construction Grille 1 (Prend le premier choix disponible de chaque zone de sa liste)
+    # Construction Grille 1
     for z in ordre_zones_g1:
         if len(matrice_zones[z]) >= 1:
             grille_1.append(matrice_zones[z][0])
             
-    # Construction Grille 2 (Prend le deuxième ou premier choix disponible)
+    # Construction Grille 2
     for z in ordre_zones_g2:
         if len(matrice_zones[z]) >= 2:
             grille_2.append(matrice_zones[z][1])
         elif len(matrice_zones[z]) == 1:
             grille_2.append(matrice_zones[z][0])
             
-    # Ajustements de sécurité si les listes font moins de 5 numéros
+    # --- CORRECTION SYNTAXE ICI ---
     tous_candidats_tries = df_c.sort_values(by="Score", ascending=False)['Numero'].tolist()
-    while len(grille_1) < 5 for _ in range(1):
-        for n in tous_candidats_tries:
-            if n not in grille_1 and len(grille_1) < 5: grille_1.append(n)
-    while len(grille_2) < 5 for _ in range(1):
-        for n in tous_candidats_tries:
-            if n not in grille_2 and n not in grille_1 and len(grille_2) < 5: grille_2.append(n)
+    
+    for n in tous_candidats_tries:
+        if len(grille_1) < 5 and n not in grille_1:
+            grille_1.append(n)
+            
+    for n in tous_candidats_tries:
+        if len(grille_2) < 5 and n not in grille_2:
+            grille_2.append(n)
+    # ------------------------------
             
     # Analyse Étoiles / Chance
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
@@ -173,7 +176,7 @@ with col_euro:
     st.error(f"**NUMÉROS :** {g1_e}  |  **ÉTOILES :** {c1_e}")
     
     st.subheader("🔮 Proposition Alternative (Grille 2)")
-    st.error(f"**NUMÉROS :** {c2_e}  |  **ÉTOILES :** {c2_e}")
+    st.error(f"**NUMÉROS :** {g2_e}  |  **ÉTOILES :** {c2_e}")
     
     with st.expander("Voir les blocs sources (Matrice EuroMillions)"):
         st.write(mat_e)
