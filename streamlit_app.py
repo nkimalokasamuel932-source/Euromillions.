@@ -10,6 +10,7 @@ st.set_page_config(page_title="IA V41 - Moteur d'Agrégats Spatiaux", layout="wi
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
+Loto,2026-05-18,14,32,33,36,49,0,0
 Loto,2026-05-16,1,12,30,32,34,6,0
 EuroMillions,2026-05-15,3,10,38,41,43,2,9
 Loto,2026-05-13,17,35,38,41,46,2,0
