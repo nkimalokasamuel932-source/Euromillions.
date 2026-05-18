@@ -5,10 +5,10 @@ import io
 import math
 import numpy as np
 
-# --- 1. CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="IA V38 - Synthèse et Grilles Finales", layout="wide")
+# --- 1. CONFIGURATION INTERFACE ---
+st.set_page_config(page_title="IA V41 - Moteur d'Agrégats Spatiaux", layout="wide")
 
-# --- 2. HISTORIQUE EN CIRCUIT FERMÉ ---
+# --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
 Loto,2026-05-16,1,12,30,32,34,6,0
 EuroMillions,2026-05-15,3,10,38,41,43,2,9
@@ -31,155 +31,118 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. MOTEUR MATHÉMATIQUE ---
-def analyser_cinetique(df_jeu, total_numeros=50):
-    historique_tirages = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
-    ecarts = {i: [] for i in range(1, total_numeros + 1)}
-    derniere_apparition = {i: -1 for i in range(1, total_numeros + 1)}
+# --- 3. ANALYSE DES AGRÉGATS (PROXIMITÉ SPATIALE) ---
+def detecter_aggregats(df_recent):
+    """
+    Analyse les liaisons de proximité (numéros distants de 1 ou 2 max dans le même tirage).
+    """
+    liaisons = []
+    tirages = df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
     
-    for index, tirage in enumerate(reversed(historique_tirages)):
-        for num in tirage:
-            num = int(num)
-            if num in ecarts:
-                if derniere_apparition[num] != -1:
-                    ecarts[num].append(index - derniere_apparition[num])
-                derniere_apparition[num] = index
+    for t in tirages:
+        t_trie = sorted([int(x) for x in t])
+        # Vérifie l'écart entre les numéros consécutifs du tirage
+        for i in range(len(t_trie) - 1):
+            diff = t_trie[i+1] - t_trie[i]
+            if diff <= 2: # Proximité immédiate ou saut de 1 (ex: 30-32 ou 30-31)
+                liaisons.append(t_trie[i])
+                liaisons.append(t_trie[i+1])
                 
-    scores_cinetiques = {}
-    for num, liste_ecarts in ecarts.items():
-        if len(liste_ecarts) >= 2:
-            moyenne_ecart = np.mean(liste_ecarts)
-            regularite = np.std(liste_ecarts)
-            scores_cinetiques[num] = 100 / (moyenne_ecart * (regularite + 0.5))
-        elif len(liste_ecarts) == 1:
-            scores_cinetiques[num] = 15.0
-        else:
-            scores_cinetiques[num] = 2.0
-            
-    return scores_cinetiques
+    return Counter(liaisons)
 
-# --- 4. SELECTION ET SYNTHÈSE DES GRILLES ---
-def generer_jeux_v38(df_hist, jeu_type):
+# --- 4. MOTEUR COMBINATOIRE MATRICIEL V41 ---
+def generer_systeme_v41(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
     max_num = 49 if est_loto else 50
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type]
-    
-    scores_cinetiques = analyser_cinetique(df_jeu, max_num)
     df_recent = df_jeu.head(10)
     
-    # Uniquement la liste fermée des 10 derniers tirages
-    nums_deja_sortis = set(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    # Sécurité absolue : circuit fermé strict
+    nums_autorises = set(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    freq_brute = Counter(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
+    # Détection des agrégats récents du circuit
+    scores_aggregats = detecter_aggregats(df_recent)
+    
+    # Résonance croisée
     autre_jeu = "EuroMillions" if est_loto else "Loto"
     df_autre = df_hist[df_hist['Jeu'] == autre_jeu].head(1)
     nums_resonance = set(df_autre.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']]) if not df_autre.empty else set()
-
-    candidats = []
-    for num in nums_deja_sortis:
-        score_base = scores_cinetiques.get(num, 5.0)
-        poids = score_base * 10
-        if num in nums_resonance: poids *= 1.40
+    
+    scores_finaux = []
+    for num in nums_autorises:
+        # Calcul du score hybride : Cinétique + Agrégats
+        score_base = freq_brute[num] * 5
+        if num in nums_resonance: score_base += 15
+        
+        # BONUS AGRÉGAT : Si le numéro a tendance à sortir en groupe, on augmente sa force
+        bonus_colle = scores_aggregats.get(num, 0) * 8
+        score_total = score_base + bonus_colle
+        
         zone = (num // 10) * 10
-        candidats.append({"Numero": int(num), "Zone": zone, "Score": poids})
+        scores_finaux.append({"Numero": num, "Zone": zone, "Score": score_total})
         
-    df_c = pd.DataFrame(candidats)
+    df_scores = pd.DataFrame(scores_finaux).sort_values(by="Score", ascending=False)
     
-    # Étape A : Extraire les blocs de zones (V37)
-    matrice_zones = {}
-    les_zones = [0, 10, 20, 30, 40]
-    for z in les_zones:
-        df_zone = df_c[df_c['Zone'] == z].sort_values(by="Score", ascending=False)
-        matrice_zones[z] = df_zone['Numero'].head(3).tolist()
-        
-    # Étape B : Mélanger et croiser les zones pour créer 2 propositions de grilles distinctes
-    grille_1 = []
-    grille_2 = []
+    # Sélection des 9 Piliers en respectant la limite stricte de 3 par zone
+    compteur_zones = Counter()
+    top_9 = []
     
-    # Ordre de priorité des zones à mélanger pour équilibrer
-    ordre_zones_g1 = [0, 20, 40, 10, 30]
-    ordre_zones_g2 = [30, 10, 40, 20, 0]
+    for _, row in df_scores.iterrows():
+        n = int(row['Numero'])
+        zone = int(row['Zone'])
+        if compteur_zones[zone] < 3 and len(top_9) < 9:
+            top_9.append(n)
+            compteur_zones[zone] += 1
+            
+    # Complétion automatique si nécessaire
+    for _, row in df_scores.iterrows():
+        n = int(row['Numero'])
+        if n not in top_9 and len(top_9) < 9:
+            top_9.append(n)
+
+    # ALGORITHME D'IMBRICATION (Système réduit de couverture à forte densité)
+    # Tri des 9 numéros pour aligner les agrégats côte à côte dans les grilles
+    top_9_tries = sorted(top_9)
     
-    # Construction Grille 1
-    for z in ordre_zones_g1:
-        if len(matrice_zones[z]) >= 1:
-            grille_1.append(matrice_zones[z][0])
-            
-    # Construction Grille 2
-    for z in ordre_zones_g2:
-        if len(matrice_zones[z]) >= 2:
-            grille_2.append(matrice_zones[z][1])
-        elif len(matrice_zones[z]) == 1:
-            grille_2.append(matrice_zones[z][0])
-            
-    # --- CORRECTION SYNTAXE ICI ---
-    tous_candidats_tries = df_c.sort_values(by="Score", ascending=False)['Numero'].tolist()
-    
-    for n in tous_candidats_tries:
-        if len(grille_1) < 5 and n not in grille_1:
-            grille_1.append(n)
-            
-    for n in tous_candidats_tries:
-        if len(grille_2) < 5 and n not in grille_2:
-            grille_2.append(n)
-    # ------------------------------
-            
-    # Analyse Étoiles / Chance
+    # Distribution optimisée pour forcer le regroupement des blocs soudés
+    g1 = [top_9_tries[0], top_9_tries[1], top_9_tries[2], top_9_tries[3], top_9_tries[4]]
+    g2 = [top_9_tries[0], top_9_tries[1], top_9_tries[5], top_9_tries[6], top_9_tries[7]]
+    g3 = [top_9_tries[2], top_9_tries[3], top_9_tries[4], top_9_tries[5], top_9_tries[8] if len(top_9_tries) > 8 else top_9_tries[0]]
+
+    # Traitement Étoiles / Chance
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
-    stars_ferme = df_recent[e_cols].values.flatten()
-    stars_ferme = [s for s in stars_ferme if s > 0]
-    stats_s = Counter(stars_ferme)
-    
-    stars_candidats = []
-    for star, freq in stats_s.items():
-        score_s = freq * 10
-        if not df_autre.empty and star in df_autre.iloc[0][['E1', 'E2']].values: score_s *= 1.40
-        stars_candidats.append({"Etoile": star, "Score": score_s})
-        
-    df_s = pd.DataFrame(stars_candidats).sort_values(by="Score", ascending=False)
-    final_s = df_s['Etoile'].head(4).tolist()
-    
-    # Attribution des étoiles/chances aux grilles
-    if est_loto:
-        s_g1 = [final_s[0]] if len(final_s) >= 1 else [6]
-        s_g2 = [final_s[1]] if len(final_s) >= 2 else [s_g1[0]]
-    else:
-        s_g1 = final_s[:2] if len(final_s) >= 2 else [2, 9]
-        s_g2 = final_s[2:4] if len(final_s) >= 4 else [5, 7]
+    stars = [s for s in df_recent[e_cols].values.flatten() if s > 0]
+    top_stars = [item[0] for item in Counter(stars).most_common(3)]
+    while len(top_stars) < 3: top_stars.append(6)
 
-    return sorted(grille_1), sorted(grille_2), sorted(s_g1), sorted(s_g2), matrice_zones
+    return sorted(g1), sorted(g2), sorted(g3), top_stars[:3], top_9_tries, df_scores
 
-# --- 5. INTERFACE UTILISATEUR ---
-st.title("🎯 IA V38 - COMBINATOIRE ET PROPOSITIONS DE JEUX FINALES")
-st.write("Le système a regroupé les matrices de zones pour fusionner les meilleurs potentiels cinétiques.")
+# --- 5. RUNTIME & INTERFACE STREAMLIT ---
+st.title("🧩 IA V41 - MOTEUR D'AGRÉGATS ET DENSITÉ DE ZONE")
+st.write("Ce module repère les numéros 'aimants' qui sortent collés les uns aux autres pour briser l'éparpillement inutile.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 GRILLES LOTO PROPOSÉES")
-    g1_l, g2_l, c1_l, c2_l, mat_l = generer_jeux_v38(df, "Loto")
-    
-    st.subheader("💡 Proposition Principale (Grille 1)")
-    st.success(f"**NUMÉROS :** {g1_l}  |  **CHANCE :** {c1_l}")
-    
-    st.subheader("🔮 Proposition Alternative (Grille 2)")
-    st.success(f"**NUMÉROS :** {g2_l}  |  **CHANCE :** {c2_l}")
-    
-    with st.expander("Voir les blocs sources (Matrice Loto)"):
-        st.write(mat_l)
+    st.header("🎰 PRONOSTIC AGRÉGATS LOTO")
+    g1_l, g2_l, g3_l, ch_l, top9_l, sc_l = generer_systeme_v41(df, "Loto")
+    st.info(f"**Les 9 Piliers (Agrégats Inclus) :** {top9_l}")
+    st.markdown("---")
+    st.success(f"**Grille 1 :** {g1_l} | **Chance :** {ch_l[0]}")
+    st.success(f"**Grille 2 :** {g2_l} | **Chance :** {ch_l[1]}")
+    st.success(f"**Grille 3 :** {g3_l} | **Chance :** {ch_l[2]}")
+    with st.expander("Analyse des forces individuelles"):
+        st.dataframe(sc_l, hide_index=True)
 
 with col_euro:
-    st.header("🇪🇺 GRILLES EUROMILLIONS PROPOSÉES")
-    g1_e, g2_e, c1_e, c2_e, mat_e = generer_jeux_v38(df, "EuroMillions")
-    
-    st.subheader("💡 Proposition Principale (Grille 1)")
-    st.error(f"**NUMÉROS :** {g1_e}  |  **ÉTOILES :** {c1_e}")
-    
-    st.subheader("🔮 Proposition Alternative (Grille 2)")
-    st.error(f"**NUMÉROS :** {g2_e}  |  **ÉTOILES :** {c2_e}")
-    
-    with st.expander("Voir les blocs sources (Matrice EuroMillions)"):
-        st.write(mat_e)
-
-st.divider()
-st.caption("🛡️ Sécurité V38 active : Tous les numéros ci-dessus se trouvaient obligatoirement dans les 10 derniers tirages réels.")
+    st.header("🇪🇺 PRONOSTIC AGRÉGATS EUROMILLIONS")
+    g1_e, g2_e, g3_e, et_e, top9_e, sc_e = generer_systeme_v41(df, "EuroMillions")
+    st.info(f"**Les 9 Piliers (Agrégats Inclus) :** {top9_e}")
+    st.markdown("---")
+    st.error(f"**Grille 1 :** {g1_e} | **Étoiles :** {et_e[:2]}")
+    st.error(f"**Grille 2 :** {g2_e} | **Étoiles :** {et_e[1:3]}")
+    st.error(f"**Grille 3 :** {g3_e} | **Étoiles :** [{et_e[0]}, {et_e[2]}]")
+    with st.expander("Analyse des forces individuelles"):
+        st.dataframe(sc_e, hide_index=True)
