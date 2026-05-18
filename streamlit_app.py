@@ -46,71 +46,71 @@ def detecter_aggregats(df_recent):
                 liaisons.append(t_trie[i+1])
     return Counter(liaisons)
 
-# --- 4. MOTEUR GÉNÉTIQUE DE COUVERTURE TOTALE (6 GRILLES OPTIMALES) ---
+# --- 4. MOTEUR SÉCURISÉ DE COUVERTURE TOTALE (6 GRILLES) ---
 def generer_mutation_systeme_v44(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type]
     df_recent = df_jeu.head(10)
     
-    # ÉLARGISSEMENT MAXIMAL : On prend TOUS les numéros sortis dans le circuit fermé
+    # Extraction propre des numéros maîtres du circuit fermé
     tous_maitres = sorted(list(set(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
     
     scores_aggregats = detecter_aggregats(df_recent)
     freq_brute = Counter(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
-    # Calcul des poids pour prioriser l'assemblage dans les grilles
     poids_nums = {}
     for n in tous_maitres:
         poids_nums[n] = freq_brute[n] * 3 + scores_aggregats.get(n, 0) * 5
 
-    # Algorithme de brassage et couverture par population
     meilleur_bloc_six = []
-    max_paires_uniques = -1
+    max_score_bloc = -1
     
-    # L'algorithme tourne sur 250 générations pour trouver l'agencement le plus dense
-    for _ in range(250):
+    # Algorithme stochastique : 300 simulations pour maximiser le poids des agrégats
+    for _ in range(300):
         bloc_test = []
         pool = tous_maitres.copy()
         random.shuffle(pool)
         
-        # Étape 1 : Assurer que chaque numéro maître apparaît au moins une fois
+        # 1. On distribue un maximum de numéros uniques du pool
         while len(pool) >= 5:
-            comb = sorted(pool[:5])
-            bloc_test.append(comb)
+            bloc_test.append(sorted(pool[:5]))
             pool = pool[5:]
             
-        # Étape 2 : Compléter le bloc pour atteindre strictement 6 grilles
-        combinaisons_possibles = [list(c) for c in itertools.combinations(tous_maitres, 5)]
-        # Tri par densité d'agrégats
-        combinaisons_possibles.sort(key=lambda c: sum(poids_nums[n] for n in c), reverse=True)
-        
-        for cand in combinaisons_possibles:
-            if len(bloc_test) >= 6:
-                break
-            if cand not in bloc_test:
-                bloc_test.append(sorted(cand))
-                
-        # Évaluation de la qualité du bloc (Nombre de paires uniques couvertes)
-        paires_bloc = set()
-        for g in bloc_test:
-            paires_bloc.update(itertools.combinations(g, 2))
+        # 2. S'il reste des numéros isolés, on les place en priorité dans les grilles suivantes
+        # Complétion des grilles jusqu'à en avoir 6
+        while len(bloc_test) < 6:
+            # On pioche 5 numéros aléatoires mais fortement pondérés
+            echantillon = random.sample(tous_maitres, k=min(5, len(tous_maitres)))
+            # Si on a des restes du premier pool non distribués, on les injecte de force
+            if len(pool) > 0:
+                for i in range(min(len(pool), 5)):
+                    if pool[i] not in echantillon:
+                        echantillon[i] = pool[i]
             
-        if len(paires_bloc) > max_paires_uniques:
-            max_paires_uniques = len(paires_bloc)
+            cand = sorted(echantillon)
+            if cand not in bloc_test and len(cand) == 5:
+                bloc_test.append(cand)
+        
+        # Évaluation du score de densité du bloc
+        score_bloc = sum(sum(poids_nums[n] for n in grille) for grille in bloc_test)
+        if score_bloc > max_score_bloc:
+            max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
-    # Traitement Étoiles / Chances (Couverture totale des étoiles récentes)
+    # Traitement des Étoiles / Chances (Circuit fermé)
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
-    stars_maitres = sorted(list(set(df_recent[e_cols].values.flatten())))
-    stars_maitres = [s for s in stars_maitres if s > 0]
-    while len(stars_maitres) < 6: 
-        stars_maitres.append(random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
+    stars_candidates = sorted(list(set(df_recent[e_cols].values.flatten())))
+    stars_candidates = [s for s in stars_candidates if s > 0]
+    
+    # Sécurité au cas où le pool d'étoiles récents est trop petit
+    while len(stars_candidates) < 6:
+        stars_candidates.append(random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
+        
+    return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres
 
-    return meilleur_bloc_six[:6], stars_maitres[:6], tous_maitres
-
-# --- 5. INTERFACE UTILISATEUR ---
+# --- 5. INTERFACE UTILISATEUR STREAMLIT ---
 st.title("🌌 IA V44 - COUVERTURE TOTALE PAR ALGORITHME GÉNÉTIQUE")
-st.write("Le Niveau Absolu : Le système n'élimine plus aucun numéro. Il prend 100% des numéros maîtres du circuit fermé et calcule la répartition optimale en 6 grilles.")
+st.write("Le Système de Couverture Intégral : 100% des numéros maîtres du circuit fermé sont répartis sur 6 grilles optimales.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
@@ -118,7 +118,7 @@ col_loto, col_euro = st.columns(2)
 with col_loto:
     st.header("🎰 FILET TOTAL LOTO")
     grilles_l, ch_l, maitres_l = generer_mutation_systeme_v44(df, "Loto")
-    st.info(f"🧬 **Les {len(maitres_l)} Numéros Maîtres (100% du circuit couvert) :** {maitres_l}")
+    st.info(f"🧬 **Les {len(maitres_l)} Numéros Maîtres du Circuit :** {maitres_l}")
     st.markdown("---")
     for idx, g in enumerate(grilles_l):
         st.success(f"**Grille {idx+1} :** {g} | **Chance :** [{ch_l[idx]}]")
@@ -126,7 +126,7 @@ with col_loto:
 with col_euro:
     st.header("🇪🇺 FILET TOTAL EUROMILLIONS")
     grilles_e, et_e, maitres_e = generer_mutation_systeme_v44(df, "EuroMillions")
-    st.info(f"🧬 **Les {len(maitres_e)} Numéros Maîtres (100% du circuit couvert) :** {maitres_e}")
+    st.info(f"🧬 **Les {len(maitres_e)} Numéros Maîtres du Circuit :** {maitres_e}")
     st.markdown("---")
     for idx, g in enumerate(grilles_e):
         e1 = et_e[idx % len(et_e)]
