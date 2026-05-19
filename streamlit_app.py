@@ -155,7 +155,7 @@ def generer_et_evaluer_v45(df_hist, jeu_type):
 
 # --- 6. INTERFACE STREAMLIT ---
 st.title("🌌 IA V45 ULTRA - ANALYSE GÉOMÉTRIQUE SECTORIELLE")
-st.write("Calcul cinématique avancé : Les forces de poussée sont désormais cartographiées par zones du tableau (Bas / Milieu / Haut).")
+st.write("Calcul cinématique avancé : Les forces de poussée sont cartographiées par zones du tableau (Bas / Milieu / Haut).")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
@@ -172,4 +172,28 @@ with col_loto:
     for idx, g in enumerate(g_l):
         st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Chance : [{int(ch_l[idx % len(ch_l)])}]")
 
-with col_
+with col_euro:
+    st.header("🇪🇺 EUROMILLIONS V45")
+    g_e, et_e, v_e, top_e = generer_et_evaluer_v45(df, "EuroMillions")
+    st.info(f"📊 Poussées : Bas: {v_e['bas']} | Milieu: {v_e['milieu']} | Haut: {v_e['haut']}")
+    
+    st.markdown("### 🎯 TOP 2 COMPROMIS SECTORIEL")
+    e1_t1 = int(et_e[top_e[0] % len(et_e)])
+    e2_t1 = int(et_e[(top_e[0] + 1) % len(et_e)])
+    if e1_t1 == e2_t1: 
+        e2_t1 = int(et_e[(top_e[0] + 2) % len(et_e)])
+        
+    e1_t2 = int(et_e[top_e[1] % len(et_e)])
+    e2_t2 = int(et_e[(top_e[1] + 1) % len(et_e)])
+    if e1_t2 == e2_t2: 
+        e2_t2 = int(et_e[(top_e[1] + 2) % len(et_e)])
+    
+    st.error(f"🔥 **PRIORITÉ 1 (Grille {top_e[0]+1}) :** {[int(n) for n in g_e[top_e[0]]]} | **Étoiles :** {sorted([e1_t1, e2_t1])}")
+    st.error(f"💎 **PRIORITÉ 2 (Grille {top_e[1]+1}) :** {[int(n) for n in g_e[top_e[1]]]} | **Étoiles :** {sorted([e1_t2, e2_t2])}")
+    st.markdown("---")
+    for idx, g in enumerate(g_e):
+        ee1 = int(et_e[idx % len(et_e)])
+        ee2 = int(et_e[(idx + 1) % len(et_e)])
+        if ee1 == ee2: 
+            ee2 = int(et_e[(idx + 2) % len(et_e)])
+        st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Étoiles : {sorted([ee1, ee2])}")
