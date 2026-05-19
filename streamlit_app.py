@@ -103,4 +103,4 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
     return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres
 
 # --- 5. INTERFACE UTILISATEUR STREAMLIT ---
-st.title("🌌 IA V44 - COUVERTURE TOTALE
+st.title("🌌 IA V44 - COUVERTURE TOTALE PAR ALGORITHME GÉNÉTIQUE")
