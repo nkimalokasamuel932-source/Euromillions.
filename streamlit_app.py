@@ -52,7 +52,6 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type]
     df_recent = df_jeu.head(10)
     
-    # Nettoyage et conversion stricte en types natifs Python (int)
     tous_maitres = sorted(list(set(int(x) for x in df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
     
     scores_aggregats = detecter_aggregats(df_recent)
@@ -65,18 +64,15 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
     meilleur_bloc_six = []
     max_score_bloc = -1
     
-    # Algorithme stochastique : 300 simulations pour maximiser la densité
     for _ in range(300):
         bloc_test = []
         pool = tous_maitres.copy()
         random.shuffle(pool)
         
-        # 1. On distribue un maximum de numéros uniques du pool
         while len(pool) >= 5:
             bloc_test.append(sorted(pool[:5]))
             pool = pool[5:]
             
-        # 2. Complétion intelligente et dynamique jusqu'à obtenir strictement 6 grilles
         while len(bloc_test) < 6:
             echantillon = random.sample(tous_maitres, k=min(5, len(tous_maitres)))
             if len(pool) > 0:
@@ -93,7 +89,6 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
             max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
-    # Traitement des Étoiles / Chances (Conversion native int)
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
     stars_candidates = sorted(list(set(int(s) for s in df_recent[e_cols].values.flatten() if s > 0)))
     
@@ -104,3 +99,28 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
 
 # --- 5. INTERFACE UTILISATEUR STREAMLIT ---
 st.title("🌌 IA V44 - COUVERTURE TOTALE PAR ALGORITHME GÉNÉTIQUE")
+st.write("Le Système de Couverture Intégral : 100% des numéros maîtres du circuit fermé sont répartis sur 6 grilles optimales.")
+
+df = pd.read_csv(io.StringIO(csv_data))
+col_loto, col_euro = st.columns(2)
+
+with col_loto:
+    st.header("🎰 FILET TOTAL LOTO")
+    grilles_l, ch_l, maitres_l = generer_mutation_systeme_v44(df, "Loto")
+    st.info(f"🧬 **Les {len(maitres_l)} Numéros Maîtres du Circuit :** {maitres_l}")
+    st.markdown("---")
+    for idx, g in enumerate(grilles_l):
+        grille_clean = [int(n) for n in g]
+        chance_clean = int(ch_l[idx])
+        st.success(f"**Grille {idx+1} :** {grille_clean} | **Chance :** [{chance_clean}]")
+
+with col_euro:
+    st.header("🇪🇺 FILET TOTAL EUROMILLIONS")
+    grilles_e, et_e, maitres_e = generer_mutation_systeme_v44(df, "EuroMillions")
+    st.info(f"🧬 **Les {len(maitres_e)} Numéros Maîtres du Circuit :** {maitres_e}")
+    st.markdown("---")
+    for idx, g in enumerate(grilles_e):
+        grille_clean = [int(n) for n in g]
+        e1 = int(et_e[idx % len(et_e)])
+        e2 = int(et_e[(idx + 1) % len(et_e)])
+        st.error(f"**Grille {idx+1} :** {grille_clean} | **Étoiles :** {sorted([e1, e2])}")
