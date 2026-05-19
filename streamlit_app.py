@@ -5,7 +5,7 @@ import io
 import random
 
 # --- 1. CONFIGURATION INTERFACE ---
-st.set_page_config(page_title="IA V44 - Sélection Prioritaire", layout="wide")
+st.set_page_config(page_title="IA V45 Ultra - Sectorielle", layout="wide")
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
@@ -31,23 +31,36 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. CALCULATEUR DE DÉRIVE ADAPTATIVE ---
-def calculer_decalage_adaptatif(df_jeu):
-    forces_translation = []
+# --- 3. CALCULATEUR VECTORIEL SECTORIEL ---
+def calculer_decalages_sectoriels(df_jeu):
+    decalages = {"bas": [], "milieu": [], "haut": []}
     tirages = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
+    
     for i in range(len(tirages) - 1):
         t_recent = sorted([int(x) for x in tirages[i]])
         t_ancien = sorted([int(x) for x in tirages[i+1]])
+        
         for num_r in t_recent:
             ecarts = [num_r - num_a for num_a in t_ancien]
-            saut_dominant = min(ecarts, key=abs)
-            if saut_dominant != 0: 
-                forces_translation.append(saut_dominant)
-    compteur = Counter(forces_translation)
-    top_trajectoires = [vecteur for vecteur, freq in compteur.most_common(2)]
-    while len(top_trajectoires) < 2: 
-        top_trajectoires.append(1)
-    return top_trajectoires
+            saut = min(ecarts, key=abs)
+            if saut != 0:
+                if num_r <= 16: 
+                    decalages["bas"].append(saut)
+                elif num_r <= 34: 
+                    decalages["milieu"].append(saut)
+                else: 
+                    decalages["haut"].append(saut)
+                
+    vecteurs_secteurs = {}
+    for zone in ["bas", "milieu", "haut"]:
+        compteur = Counter(decalages[zone])
+        if compteur:
+            dominant = compteur.most_common(1)[0][0]
+        else:
+            dominant = 1 if zone == "bas" else -1
+        vecteurs_secteurs[zone] = dominant
+        
+    return vecteurs_secteurs
 
 # --- 4. DETECTEUR D'AGRÉGATS ---
 def detecter_aggregats(df_fenetre):
@@ -61,23 +74,29 @@ def detecter_aggregats(df_fenetre):
                 liaisons.append(t_trie[i+1])
     return Counter(liaisons)
 
-# --- 5. MOTEUR DE SELECTION ET D'ÉVALUATION DES 6 GRILLES ---
-def generer_et_evaluer_six_grilles(df_hist, jeu_type):
+# --- 5. MOTEUR AVANCÉ DE SÉLECTION ULTRA V45 ---
+def generer_et_evaluer_v45(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
     max_num = 49 if est_loto else 50
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type].reset_index(drop=True)
     
-    vecteurs = calculer_decalage_adaptatif(df_jeu)
+    vecteurs_s = calculer_decalages_sectoriels(df_jeu)
+    
     df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
     pool_brut = set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
-    
     bloc_resonance = set(int(x) for x in df_coeur.iloc[0:2][['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
     pool_translate = set()
     for n in pool_brut:
-        for v in vecteurs:
-            if 1 <= n + v <= max_num: 
-                pool_translate.add(n + v)
+        if n <= 16: 
+            v = vecteurs_s["bas"]
+        elif n <= 34: 
+            v = vecteurs_s["milieu"]
+        else: 
+            v = vecteurs_s["haut"]
+        
+        if 1 <= n + v <= max_num: 
+            pool_translate.add(n + v)
             
     tous_maitres = sorted(list(pool_brut.union(pool_translate)))
     
@@ -86,11 +105,13 @@ def generer_et_evaluer_six_grilles(df_hist, jeu_type):
     
     poids_nums = {}
     for n in tous_maitres:
-        poids_nums[n] = freq_brute.get(n, 1) * 4 + scores_aggregats.get(n, 0) * 6
+        poids_brut = freq_brute.get(n, 1)
+        frein = 0.7 if poids_brut > 3 else 1.0  
+        poids_nums[n] = (poids_brut * 4 + scores_aggregats.get(n, 0) * 6) * frein
 
     meilleur_bloc_six = []
     max_score_bloc = -1
-    for _ in range(300):
+    for _ in range(400):
         bloc_test = []
         pool = tous_maitres.copy()
         random.shuffle(pool)
@@ -116,61 +137,39 @@ def generer_et_evaluer_six_grilles(df_hist, jeu_type):
     stars_candidates = sorted(list(set(int(s) for s in df_coeur[e_cols].values.flatten() if s > 0)))
     max_star = 10 if est_loto else 12
     while len(stars_candidates) < 6:
-        stars_candidates.append(random.choice(range(1, max_star + 1)))
+        r_star = random.choice(range(1, max_star + 1))
+        if r_star not in stars_candidates:
+            stars_candidates.append(r_star)
 
     scores_grilles = []
     for idx, g in enumerate(meilleur_bloc_six):
         score_base = sum(poids_nums.get(n, 1) for n in g)
-        bonus_resonance = sum(20 for n in g if n in bloc_resonance)
+        bonus_resonance = sum(25 for n in g if n in bloc_resonance)
         bonus_translation = sum(20 for n in g if n in pool_translate)
         score_total = score_base + bonus_resonance + bonus_translation
         scores_grilles.append((idx, score_total))
         
     scores_grilles.sort(key=lambda x: x[1], reverse=True)
-    idx_top1 = scores_grilles[0][0]
-    idx_top2 = scores_grilles[1][0]
     
-    return meilleur_bloc_six, stars_candidates, vecteurs, (idx_top1, idx_top2)
+    return meilleur_bloc_six, stars_candidates, vecteurs_s, (scores_grilles[0][0], scores_grilles[1][0])
 
 # --- 6. INTERFACE STREAMLIT ---
-st.title("🌌 IA V44 - FLUX COMPLET ET STRATÉGIE DE SÉLECTION")
-st.write("Le système génère le filet complet de 6 grilles, puis évalue la structure de chacune pour extraire les 2 prioritaires.")
+st.title("🌌 IA V45 ULTRA - ANALYSE GÉOMÉTRIQUE SECTORIELLE")
+st.write("Calcul cinématique avancé : Les forces de poussée sont désormais cartographiées par zones du tableau (Bas / Milieu / Haut).")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 LOTO - SÉLECTION D'ÉLITE")
-    g_l, ch_l, v_l, top_l = generer_et_evaluer_six_grilles(df, "Loto")
+    st.header("🎰 LOTO V45")
+    g_l, ch_l, v_l, top_l = generer_et_evaluer_v45(df, "Loto")
+    st.info(f"📊 Poussées : Bas: {v_l['bas']} | Milieu: {v_l['milieu']} | Haut: {v_l['haut']}")
     
-    st.markdown("### 🎯 LES 2 MEILLEURES PROPOSITIONS À JOUER")
+    st.markdown("### 🎯 TOP 2 COMPROMIS SECTORIEL")
     st.success(f"🔥 **PRIORITÉ 1 (Grille {top_l[0]+1}) :** {[int(n) for n in g_l[top_l[0]]]} | **Chance :** [{int(ch_l[top_l[0] % len(ch_l)])}]")
     st.success(f"💎 **PRIORITÉ 2 (Grille {top_l[1]+1}) :** {[int(n) for n in g_l[top_l[1]]]} | **Chance :** [{int(ch_l[top_l[1] % len(ch_l)])}]")
-    
     st.markdown("---")
-    st.markdown("#### 📂 Historique complet des 6 grilles générées :")
     for idx, g in enumerate(g_l):
         st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Chance : [{int(ch_l[idx % len(ch_l)])}]")
 
-with col_euro:
-    st.header("🇪🇺 EUROMILLIONS - SÉLECTION D'ÉLITE")
-    g_e, et_e, v_e, top_e = generer_et_evaluer_six_grilles(df, "EuroMillions")
-    
-    st.markdown("### 🎯 LES 2 MEILLEURES PROPOSITIONS À JOUER")
-    e1_t1 = int(et_e[top_e[0] % len(et_e)])
-    e2_t1 = int(et_e[(top_e[0] + 1) % len(et_e)])
-    e1_t2 = int(et_e[top_e[1] % len(et_e)])
-    e2_t2 = int(et_e[(top_e[1] + 1) % len(et_e)])
-    
-    st.error(f"🔥 **PRIORITÉ 1 (Grille {top_e[0]+1}) :** {[int(n) for n in g_e[top_e[0]]]} | **Étoiles :** {sorted(list(set([e1_t1, e2_t1])))}")
-    st.error(f"💎 **PRIORITÉ 2 (Grille {top_e[1]+1}) :** {[int(n) for n in g_e[top_e[1]]]} | **Étoiles :** {sorted(list(set([e1_t2, e2_t2])))}")
-    
-    st.markdown("---")
-    st.markdown("#### 📂 Historique complet des 6 grilles générées :")
-    for idx, g in enumerate(g_e):
-        ee1 = int(et_e[idx % len(et_e)])
-        ee2 = int(et_e[(idx + 1) % len(et_e)])
-        # Si par hasard ee1 == ee2 suite au modulo, on assure une deuxième étoile différente
-        if ee1 == ee2:
-            ee2 = int(et_e[(idx + 2) % len(et_e)])
-        st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Étoiles : {sorted([ee1, ee2])}")
+with col_
