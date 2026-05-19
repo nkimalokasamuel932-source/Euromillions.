@@ -5,7 +5,7 @@ import io
 import random
 
 # --- 1. CONFIGURATION INTERFACE ---
-st.set_page_config(page_title="IA V44 - Dérive Adaptative", layout="wide")
+st.set_page_config(page_title="IA V44 - Sélection Prioritaire", layout="wide")
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
@@ -31,27 +31,22 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. CALCULATEUR ADAPTATIF DE LA DÉRIVE CINÉMATIQUE ---
+# --- 3. CALCULATEUR DE DÉRIVE ADAPTATIVE ---
 def calculer_decalage_adaptatif(df_jeu):
     forces_translation = []
     tirages = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
-    
     for i in range(len(tirages) - 1):
         t_recent = sorted([int(x) for x in tirages[i]])
         t_ancien = sorted([int(x) for x in tirages[i+1]])
-        
         for num_r in t_recent:
             ecarts = [num_r - num_a for num_a in t_ancien]
             saut_dominant = min(ecarts, key=abs)
-            if saut_dominant != 0:
+            if saut_dominant != 0: 
                 forces_translation.append(saut_dominant)
-                
     compteur = Counter(forces_translation)
     top_trajectoires = [vecteur for vecteur, freq in compteur.most_common(2)]
-    
-    while len(top_trajectoires) < 2:
+    while len(top_trajectoires) < 2: 
         top_trajectoires.append(1)
-        
     return top_trajectoires
 
 # --- 4. DETECTEUR D'AGRÉGATS ---
@@ -66,25 +61,26 @@ def detecter_aggregats(df_fenetre):
                 liaisons.append(t_trie[i+1])
     return Counter(liaisons)
 
-# --- 5. MOTEUR ALGORITHMIQUE DE TRANSLATION VECTORIELLE ---
-def generer_mutation_vectorielle(df_hist, jeu_type):
+# --- 5. MOTEUR DE SELECTION ET D'ÉVALUATION DES 6 GRILLES ---
+def generer_et_evaluer_six_grilles(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
     max_num = 49 if est_loto else 50
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type].reset_index(drop=True)
     
     vecteurs = calculer_decalage_adaptatif(df_jeu)
-    
     df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
     pool_brut = set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
+    # Bloc Résonance Courte (tirages très proches de l'incubation)
+    bloc_resonance = set(int(x) for x in df_coeur.iloc[0:2][['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    
     pool_translate = set()
     for n in pool_brut:
-        pool_translate.add(n)
         for v in vecteurs:
-            if 1 <= n + v <= max_num:
+            if 1 <= n + v <= max_num: 
                 pool_translate.add(n + v)
-                
-    tous_maitres = sorted(list(pool_translate))
+            
+    tous_maitres = sorted(list(pool_brut.union(pool_translate)))
     
     scores_aggregats = detecter_aggregats(df_coeur)
     freq_brute = Counter(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
@@ -93,62 +89,88 @@ def generer_mutation_vectorielle(df_hist, jeu_type):
     for n in tous_maitres:
         poids_nums[n] = freq_brute.get(n, 1) * 4 + scores_aggregats.get(n, 0) * 6
 
+    # 1. Génération classique du bloc de 6 grilles optimisées
     meilleur_bloc_six = []
     max_score_bloc = -1
-    
     for _ in range(300):
         bloc_test = []
         pool = tous_maitres.copy()
         random.shuffle(pool)
-        
         while len(pool) >= 5:
             bloc_test.append(sorted(pool[:5]))
             pool = pool[5:]
-            
         while len(bloc_test) < 6:
             echantillon = random.sample(tous_maitres, k=min(5, len(tous_maitres)))
             if len(pool) > 0:
                 for i in range(min(len(pool), 5)):
-                    if pool[i] not in echantillon: echantillon[i] = pool[i]
+                    if pool[i] not in echantillon: 
+                        echantillon[i] = pool[i]
             cand = sorted(echantillon)
-            if cand not in bloc_test and len(cand) == 5: bloc_test.append(cand)
+            if cand not in bloc_test and len(cand) == 5: 
+                bloc_test.append(cand)
         
         score_bloc = sum(sum(poids_nums.get(n, 1) for n in grille) for grille in bloc_test)
         if score_bloc > max_score_bloc:
             max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
+    # Traitement des Étoiles pour les 6 grilles
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
     stars_candidates = sorted(list(set(int(s) for s in df_coeur[e_cols].values.flatten() if s > 0)))
     max_star = 10 if est_loto else 12
     while len(stars_candidates) < 6:
         stars_candidates.append(random.choice(range(1, max_star + 1)))
-        
-    return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres, vecteurs
 
-# --- 6. INTERFACE GRAPHIQUE STREAMLIT ---
-st.title("🌌 IA V44 - DÉTECTEUR DE TRANSLATION ADAPTATIF")
-st.write("Analyse Vectorielle : Le système calcule les forces de déplacement entre chaque tirage pour prédire la dérive géométrique des blocs.")
+    # 2. ÉVALUATION INTERNE DES 6 GRILLES GÉNÉRÉES POUR EXTRAIRE LE TOP 2
+    scores_grilles = []
+    for idx, g in enumerate(meilleur_bloc_six):
+        score_base = sum(poids_nums.get(n, 1) for n in g)
+        bonus_resonance = sum(20 for n in g if n in bloc_resonance)
+        bonus_translation = sum(20 for n in g if n in pool_translate)
+        
+        score_total = score_base + bonus_resonance + bonus_translation
+        scores_grilles.append((idx, score_total))
+        
+    scores_grilles.sort(key=lambda x: x[1], reverse=True)
+    idx_top1 = scores_grilles[0][0]
+    idx_top2 = scores_grilles[1][0]
+    
+    return meilleur_bloc_six, stars_candidates, vecteurs, (idx_top1, idx_top2)
+
+# --- 6. INTERFACE STREAMLIT ---
+st.title("🌌 IA V44 - FLUX COMPLET ET STRATÉGIE DE SÉLECTION")
+st.write("Le système génère le filet complet de 6 grilles, puis évalue la structure de chacune pour extraire les 2 prioritaires.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 LOTO - CINÉMATIQUE")
-    grilles_l, ch_l, maitres_l, vecteurs_l = generer_mutation_vectorielle(df, "Loto")
-    st.warning(f"📐 Vecteurs de poussée détectés : {vecteurs_l[0]} et {vecteurs_l[1]}")
-    st.info(f"🧬 Pool translaté de manière adaptative ({len(maitres_l)} numéros) : {maitres_l}")
+    st.header("🎰 LOTO - SÉLECTION D'ÉLITE")
+    g_l, ch_l, v_l, top_l = generer_et_evaluer_six_grilles(df, "Loto")
+    
+    st.markdown("### 🎯 LES 2 MEILLEURES PROPOSITIONS À JOUER")
+    st.success(f"🔥 **PRIORITÉ 1 (Grille {top_l[0]+1}) :** {[int(n) for n in g_l[top_l[0]]]} | **Chance :** [{int(ch_l[top_l[0]])}]")
+    st.success(f"💎 **PRIORITÉ 2 (Grille {top_l[1]+1}) :** {[int(n) for n in g_l[top_l[1]]]} | **Chance :** [{int(ch_l[top_l[1]])}]")
+    
     st.markdown("---")
-    for idx, g in enumerate(grilles_l):
-        st.success(f"**Grille {idx+1} :** {[int(n) for n in g]} | **Chance :** [{int(ch_l[idx])}]")
+    st.markdown("#### 📂 Historique complet des 6 grilles générées :")
+    for idx, g in enumerate(g_l):
+        st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Chance : [{int(ch_l[idx])}]")
 
 with col_euro:
-    st.header("🇪🇺 EUROMILLIONS - CINÉMATIQUE")
-    grilles_e, et_e, maitres_e, vecteurs_e = generer_mutation_vectorielle(df, "EuroMillions")
-    st.warning(f"📐 Vecteurs de poussée détectés : {vecteurs_e[0]} et {vecteurs_e[1]}")
-    st.info(f"🧬 Pool translaté de manière adaptative ({len(maitres_e)} numéros) : {maitres_e}")
+    st.header("🇪🇺 EUROMILLIONS - SÉLECTION D'ÉLITE")
+    g_e, et_e, v_e, top_e = generer_et_evaluer_six_grilles(df, "EuroMillions")
+    
+    st.markdown("### 🎯 LES 2 MEILLEURES PROPOSITIONS À JOUER")
+    e1_t1, e2_t1 = int(et_e[top_e[0] % len(et_e)]), int(et_e[(top_e[0] + 1) % len(et_e)])
+    e1_t2, e2_t2 = int(et_e[top_e[1] % len(et_e)]), int(et_e[(top_e[1] + 1) % len(et_e)])
+    
+    st.error(f"🔥 **PRIORITÉ 1 (Grille {top_e[0]+1}) :** {[int(n) for n in g_e[top_e[0]]]} | **Étoiles :** {sorted([e1_t1, e2_t1])}")
+    st.error(f"💎 **PRIORITÉ 2 (Grille {top_e[1]+1}) :** {[int(n) for n in g_e[top_e[1]]]} | **Étoiles :** {sorted([e1_t2, e2_t2])}")
+    
     st.markdown("---")
-    for idx, g in enumerate(grilles_e):
-        e1 = int(et_e[idx % len(et_e)])
-        e2 = int(et_e[(idx + 1) % len(et_e)])
-        st.error(f"**Grille {idx+1} :** {[int(n) for n in g]} | **Étoiles :** {sorted([e1, e2])}")
+    st.markdown("#### 📂 Historique complet des 6 grilles générées :")
+    for idx, g in enumerate(g_e):
+        ee1 = int(et_e[idx % len(et_e)])
+        ee2 = int(et_e[(idx + 1) % len(et_e)])
+        st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Étoiles : {sorted([ee1, ee2])}")
