@@ -52,11 +52,11 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type]
     df_recent = df_jeu.head(10)
     
-    # Extraction propre des numéros maîtres du circuit fermé
-    tous_maitres = sorted(list(set(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
+    # Nettoyage et conversion stricte en types natifs Python (int)
+    tous_maitres = sorted(list(set(int(x) for x in df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
     
     scores_aggregats = detecter_aggregats(df_recent)
-    freq_brute = Counter(df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    freq_brute = Counter(int(x) for x in df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
     poids_nums = {}
     for n in tous_maitres:
@@ -65,7 +65,7 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
     meilleur_bloc_six = []
     max_score_bloc = -1
     
-    # Algorithme stochastique : 300 simulations pour maximiser le poids des agrégats
+    # Algorithme stochastique : 300 simulations pour maximiser la densité
     for _ in range(300):
         bloc_test = []
         pool = tous_maitres.copy()
@@ -76,12 +76,9 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
             bloc_test.append(sorted(pool[:5]))
             pool = pool[5:]
             
-        # 2. S'il reste des numéros isolés, on les place en priorité dans les grilles suivantes
-        # Complétion des grilles jusqu'à en avoir 6
+        # 2. Complétion intelligente et dynamique jusqu'à obtenir strictement 6 grilles
         while len(bloc_test) < 6:
-            # On pioche 5 numéros aléatoires mais fortement pondérés
             echantillon = random.sample(tous_maitres, k=min(5, len(tous_maitres)))
-            # Si on a des restes du premier pool non distribués, on les injecte de force
             if len(pool) > 0:
                 for i in range(min(len(pool), 5)):
                     if pool[i] not in echantillon:
@@ -91,44 +88,19 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
             if cand not in bloc_test and len(cand) == 5:
                 bloc_test.append(cand)
         
-        # Évaluation du score de densité du bloc
         score_bloc = sum(sum(poids_nums[n] for n in grille) for grille in bloc_test)
         if score_bloc > max_score_bloc:
             max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
-    # Traitement des Étoiles / Chances (Circuit fermé)
+    # Traitement des Étoiles / Chances (Conversion native int)
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
-    stars_candidates = sorted(list(set(df_recent[e_cols].values.flatten())))
-    stars_candidates = [s for s in stars_candidates if s > 0]
+    stars_candidates = sorted(list(set(int(s) for s in df_recent[e_cols].values.flatten() if s > 0)))
     
-    # Sécurité au cas où le pool d'étoiles récents est trop petit
     while len(stars_candidates) < 6:
         stars_candidates.append(random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
         
     return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres
 
 # --- 5. INTERFACE UTILISATEUR STREAMLIT ---
-st.title("🌌 IA V44 - COUVERTURE TOTALE PAR ALGORITHME GÉNÉTIQUE")
-st.write("Le Système de Couverture Intégral : 100% des numéros maîtres du circuit fermé sont répartis sur 6 grilles optimales.")
-
-df = pd.read_csv(io.StringIO(csv_data))
-col_loto, col_euro = st.columns(2)
-
-with col_loto:
-    st.header("🎰 FILET TOTAL LOTO")
-    grilles_l, ch_l, maitres_l = generer_mutation_systeme_v44(df, "Loto")
-    st.info(f"🧬 **Les {len(maitres_l)} Numéros Maîtres du Circuit :** {maitres_l}")
-    st.markdown("---")
-    for idx, g in enumerate(grilles_l):
-        st.success(f"**Grille {idx+1} :** {g} | **Chance :** [{ch_l[idx]}]")
-
-with col_euro:
-    st.header("🇪🇺 FILET TOTAL EUROMILLIONS")
-    grilles_e, et_e, maitres_e = generer_mutation_systeme_v44(df, "EuroMillions")
-    st.info(f"🧬 **Les {len(maitres_e)} Numéros Maîtres du Circuit :** {maitres_e}")
-    st.markdown("---")
-    for idx, g in enumerate(grilles_e):
-        e1 = et_e[idx % len(et_e)]
-        e2 = et_e[(idx + 1) % len(et_e)]
-        st.error(f"**Grille {idx+1} :** {g} | **Étoiles :** {sorted([e1, e2])}")
+st.title("🌌 IA V44 - COUVERTURE TOTALE
