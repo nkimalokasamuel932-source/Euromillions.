@@ -5,7 +5,7 @@ import io
 import random
 
 # --- 1. CONFIGURATION INTERFACE ---
-st.set_page_config(page_title="IA V44 - Radar de Pertinence", layout="wide")
+st.set_page_config(page_title="IA V44 - Dérive Adaptative", layout="wide")
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
@@ -31,35 +31,30 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. ANALYSEUR DES TENDANCES MENSUELLES ---
-def analyser_repetitions_mensuelles(df_jeu):
-    tous_nums_mois = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten()
-    compteur_mois = Counter(int(x) for x in tous_nums_mois)
-    piliers_mensuels = [num for num, freq in compteur_mois.items() if freq >= 2]
-    return piliers_mensuels, compteur_mois
-
-# --- 4. CALCULATEUR DYNAMIQUE DES SAUTS ---
-def calculer_tendances_sauts(df_jeu):
-    tous_sauts = []
+# --- 3. CALCULATEUR ADAPTATIF DE LA DÉRIVE CINÉMATIQUE ---
+def calculer_decalage_adaptatif(df_jeu):
+    forces_translation = []
     tirages = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
     
     for i in range(len(tirages) - 1):
-        t_actuel = sorted([int(x) for x in tirages[i]])
-        t_precedent = sorted([int(x) for x in tirages[i+1]])
+        t_recent = sorted([int(x) for x in tirages[i]])
+        t_ancien = sorted([int(x) for x in tirages[i+1]])
         
-        for n_a in t_actuel:
-            ecarts = [n_a - n_p for n_p in t_precedent]
-            saut_le_plus_proche = min(ecarts, key=abs)
-            if saut_le_plus_proche != 0:
-                tous_sauts.append(saut_le_plus_proche)
+        for num_r in t_recent:
+            ecarts = [num_r - num_a for num_a in t_ancien]
+            saut_dominant = min(ecarts, key=abs)
+            if saut_dominant != 0:
+                forces_translation.append(saut_dominant)
                 
-    compteur = Counter(tous_sauts)
-    top_sauts = [saut for saut, freq in compteur.most_common(2)]
-    while len(top_sauts) < 2:
-        top_sauts.append(1)
-    return top_sauts
+    compteur = Counter(forces_translation)
+    top_trajectoires = [vecteur for vecteur, freq in compteur.most_common(2)]
+    
+    while len(top_trajectoires) < 2:
+        top_trajectoires.append(1)
+        
+    return top_trajectoires
 
-# --- 5. DÉTECTEUR D'AGRÉGATS ---
+# --- 4. DETECTEUR D'AGRÉGATS ---
 def detecter_aggregats(df_fenetre):
     liaisons = []
     tirages = df_fenetre[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
@@ -71,36 +66,32 @@ def detecter_aggregats(df_fenetre):
                 liaisons.append(t_trie[i+1])
     return Counter(liaisons)
 
-# --- 6. MOTEUR ALGORITHMIQUE AVEC CRITÈRE DE PERTINENCE PROCHE ---
-def generer_mutation_pertinence_v44(df_hist, jeu_type):
+# --- 5. MOTEUR ALGORITHMIQUE DE TRANSLATION VECTORIELLE ---
+def generer_mutation_vectorielle(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
     max_num = 49 if est_loto else 50
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type].reset_index(drop=True)
     
-    piliers_mensuels, compteur_mois = analyser_repetitions_mensuelles(df_jeu)
-    saut1, saut2 = calculer_tendances_sauts(df_jeu)
+    vecteurs = calculer_decalage_adaptatif(df_jeu)
     
     df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
     pool_brut = set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
-    pool_derive = set()
+    pool_translate = set()
     for n in pool_brut:
-        pool_derive.add(n)
-        if 1 <= n + saut1 <= max_num: pool_derive.add(n + saut1)
-        if 1 <= n + saut2 <= max_num: pool_derive.add(n + saut2)
-            
-    tous_maitres = sorted(list(pool_derive.union(set(piliers_mensuels))))
-    
-    signaux_proches = [n for n in tous_maitres if n in piliers_mensuels and n in pool_derive]
+        pool_translate.add(n)
+        for v in vecteurs:
+            if 1 <= n + v <= max_num:
+                pool_translate.add(n + v)
+                
+    tous_maitres = sorted(list(pool_translate))
     
     scores_aggregats = detecter_aggregats(df_coeur)
     freq_brute = Counter(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
     poids_nums = {}
     for n in tous_maitres:
-        bonus_pertinence = 15 if n in signaux_proches else 0
-        bonus_mensuel = compteur_mois.get(n, 0) * 3
-        poids_nums[n] = freq_brute.get(n, 1) * 4 + scores_aggregats.get(n, 0) * 6 + bonus_mensuel + bonus_pertinence
+        poids_nums[n] = freq_brute.get(n, 1) * 4 + scores_aggregats.get(n, 0) * 6
 
     meilleur_bloc_six = []
     max_score_bloc = -1
@@ -119,7 +110,6 @@ def generer_mutation_pertinence_v44(df_hist, jeu_type):
             if len(pool) > 0:
                 for i in range(min(len(pool), 5)):
                     if pool[i] not in echantillon: echantillon[i] = pool[i]
-            
             cand = sorted(echantillon)
             if cand not in bloc_test and len(cand) == 5: bloc_test.append(cand)
         
@@ -134,29 +124,29 @@ def generer_mutation_pertinence_v44(df_hist, jeu_type):
     while len(stars_candidates) < 6:
         stars_candidates.append(random.choice(range(1, max_star + 1)))
         
-    return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres, (saut1, saut2), signaux_proches
+    return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres, vecteurs
 
-# --- 7. INTERFACE STREAMLIT ---
-st.title("🌌 IA V44 - COUPLAGE PERTINENCE PROCHE & INCUBATION")
-st.write("Analyse Prédictive : L'algorithme isole les numéros pivots qui valident à la fois la répétition mensuelle et les dérives géométriques.")
+# --- 6. INTERFACE GRAPHIQUE STREAMLIT ---
+st.title("🌌 IA V44 - DÉTECTEUR DE TRANSLATION ADAPTATIF")
+st.write("Analyse Vectorielle : Le système calcule les forces de déplacement entre chaque tirage pour prédire la dérive géométrique des blocs.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 LOTO - INTERSECTION")
-    grilles_l, ch_l, maitres_l, sauts_l, signaux_l = generer_mutation_pertinence_v44(df, "Loto")
-    st.warning(f"🎯 **Signaux Proches Détectés (Sauts {sauts_l}) :** {signaux_l}")
-    st.info(f"🧬 **Filet Global Adapté ({len(maitres_l)} numéros) :** {maitres_l}")
+    st.header("🎰 LOTO - CINÉMATIQUE")
+    grilles_l, ch_l, maitres_l, vecteurs_l = generer_mutation_vectorielle(df, "Loto")
+    st.warning(f"📐 Vecteurs de poussée détectés : {vecteurs_l[0]} et {vecteurs_l[1]}")
+    st.info(f"🧬 Pool translaté de manière adaptative ({len(maitres_l)} numéros) : {maitres_l}")
     st.markdown("---")
     for idx, g in enumerate(grilles_l):
         st.success(f"**Grille {idx+1} :** {[int(n) for n in g]} | **Chance :** [{int(ch_l[idx])}]")
 
 with col_euro:
-    st.header("🇪🇺 EUROMILLIONS - INTERSECTION")
-    grilles_e, et_e, maitres_e, sauts_e, signaux_e = generer_mutation_pertinence_v44(df, "EuroMillions")
-    st.warning(f"🎯 **Signaux Proches Détectés (Sauts {sauts_e}) :** {signaux_e}")
-    st.info(f"🧬 **Filet Global Adapté ({len(maitres_e)} numéros) :** {maitres_e}")
+    st.header("🇪🇺 EUROMILLIONS - CINÉMATIQUE")
+    grilles_e, et_e, maitres_e, vecteurs_e = generer_mutation_vectorielle(df, "EuroMillions")
+    st.warning(f"📐 Vecteurs de poussée détectés : {vecteurs_e[0]} et {vecteurs_e[1]}")
+    st.info(f"🧬 Pool translaté de manière adaptative ({len(maitres_e)} numéros) : {maitres_e}")
     st.markdown("---")
     for idx, g in enumerate(grilles_e):
         e1 = int(et_e[idx % len(et_e)])
