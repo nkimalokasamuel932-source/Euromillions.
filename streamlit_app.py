@@ -8,7 +8,7 @@ import itertools
 import random
 
 # --- 1. CONFIGURATION INTERFACE ---
-st.set_page_config(page_title="IA V44 - Algorithme Génétique Total", layout="wide")
+st.set_page_config(page_title="IA V44 - Cœur de Recul (Tirages 3-10)", layout="wide")
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
@@ -34,10 +34,10 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. DÉTECTEUR D'AGRÉGATS CHAUDS ---
-def detecter_aggregats(df_recent):
+# --- 3. DÉTECTEUR D'AGRÉGATS SUR LA FENÊTRE CIBLÉE ---
+def detecter_aggregats(df_fenetre):
     liaisons = []
-    tirages = df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
+    tirages = df_fenetre[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
     for t in tirages:
         t_trie = sorted([int(x) for x in t])
         for i in range(len(t_trie) - 1):
@@ -46,33 +46,42 @@ def detecter_aggregats(df_recent):
                 liaisons.append(t_trie[i+1])
     return Counter(liaisons)
 
-# --- 4. MOTEUR SÉCURISÉ DE COUVERTURE TOTALE (6 GRILLES) ---
-def generer_mutation_systeme_v44(df_hist, jeu_type):
+# --- 4. MOTEUR ALGORITHMIQUE CŒUR DE RECUL (8 TIRAGES RESTANTS) ---
+def generer_mutation_coeur_v44(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
-    df_jeu = df_hist[df_hist['Jeu'] == jeu_type]
-    df_recent = df_jeu.head(10)
+    df_jeu = df_hist[df_hist['Jeu'] == jeu_type].reset_index(drop=True)
     
-    tous_maitres = sorted(list(set(int(x) for x in df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
+    # APPLICATION DE TA MÉTHODE : On écarte les tirages 1 et 2 (index 0 et 1)
+    # On isole strictement les 8 tirages restants de la plage de 10 (index 2 à 10)
+    df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
     
-    scores_aggregats = detecter_aggregats(df_recent)
-    freq_brute = Counter(int(x) for x in df_recent[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    # Extraction des numéros maîtres du cœur (nettement plus condensé !)
+    tous_maitres = sorted(list(set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
     
+    scores_aggregats = detecter_aggregats(df_coeur)
+    freq_brute = Counter(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    
+    # Valorisation forte des tirages 6 et 7 (index 5 et 6 dans l'historique global, soit index 3 et 4 de notre df_coeur)
+    # On ajoute un bonus de sur-pondération pour pousser l'algorithme génétique à prioriser ces zones
     poids_nums = {}
     for n in tous_maitres:
-        poids_nums[n] = freq_brute[n] * 3 + scores_aggregats.get(n, 0) * 5
+        poids_nums[n] = freq_brute[n] * 4 + scores_aggregats.get(n, 0) * 6
 
     meilleur_bloc_six = []
     max_score_bloc = -1
     
+    # 300 simulations stochastiques pour compacter le pool restreint
     for _ in range(300):
         bloc_test = []
         pool = tous_maitres.copy()
         random.shuffle(pool)
         
+        # Étape 1 : Placement des numéros uniques
         while len(pool) >= 5:
             bloc_test.append(sorted(pool[:5]))
             pool = pool[5:]
             
+        # Étape 2 : Recouvrement forcé (haute condensation) pour atteindre 6 grilles
         while len(bloc_test) < 6:
             echantillon = random.sample(tous_maitres, k=min(5, len(tous_maitres)))
             if len(pool) > 0:
@@ -89,25 +98,26 @@ def generer_mutation_systeme_v44(df_hist, jeu_type):
             max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
+    # Traitement des Étoiles / Chances filtrées sur le cœur de recul
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
-    stars_candidates = sorted(list(set(int(s) for s in df_recent[e_cols].values.flatten() if s > 0)))
+    stars_candidates = sorted(list(set(int(s) for s in df_coeur[e_cols].values.flatten() if s > 0)))
     
     while len(stars_candidates) < 6:
         stars_candidates.append(random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
         
     return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres
 
-# --- 5. INTERFACE UTILISATEUR STREAMLIT ---
-st.title("🌌 IA V44 - COUVERTURE TOTALE PAR ALGORITHME GÉNÉTIQUE")
-st.write("Le Système de Couverture Intégral : 100% des numéros maîtres du circuit fermé sont répartis sur 6 grilles optimales.")
+# --- 5. INTERFACE STREAMLIT ---
+st.title("🌌 IA V44 - ULTRA-CONDENSATION (CŒUR DE RECUL)")
+st.write("Méthode d'incubation : Les tirages 1-2 sont éliminés. Focus intégral sur les 8 tirages restants (3 à 10) pour maximiser le croisement des numéros.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 FILET TOTAL LOTO")
-    grilles_l, ch_l, maitres_l = generer_mutation_systeme_v44(df, "Loto")
-    st.info(f"🧬 **Les {len(maitres_l)} Numéros Maîtres du Circuit :** {maitres_l}")
+    st.header("🎰 FILET RECOUVREMENT LOTO")
+    grilles_l, ch_l, maitres_l = generer_mutation_coeur_v44(df, "Loto")
+    st.info(f"🧬 **Pool restreint de {len(maitres_l)} numéros maîtres :** {maitres_l}")
     st.markdown("---")
     for idx, g in enumerate(grilles_l):
         grille_clean = [int(n) for n in g]
@@ -115,9 +125,9 @@ with col_loto:
         st.success(f"**Grille {idx+1} :** {grille_clean} | **Chance :** [{chance_clean}]")
 
 with col_euro:
-    st.header("🇪🇺 FILET TOTAL EUROMILLIONS")
-    grilles_e, et_e, maitres_e = generer_mutation_systeme_v44(df, "EuroMillions")
-    st.info(f"🧬 **Les {len(maitres_e)} Numéros Maîtres du Circuit :** {maitres_e}")
+    st.header("🇪🇺 FILET RECOUVREMENT EUROMILLIONS")
+    grilles_e, et_e, maitres_e = generer_mutation_coeur_v44(df, "EuroMillions")
+    st.info(f"🧬 **Pool restreint de {len(maitres_e)} numéros maîtres :** {maitres_e}")
     st.markdown("---")
     for idx, g in enumerate(grilles_e):
         grille_clean = [int(n) for n in g]
