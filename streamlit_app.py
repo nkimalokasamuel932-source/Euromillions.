@@ -2,13 +2,10 @@ import streamlit as st
 import pandas as pd
 from collections import Counter
 import io
-import math
-import numpy as np
-import itertools
 import random
 
 # --- 1. CONFIGURATION INTERFACE ---
-st.set_page_config(page_title="IA V44 - Cœur de Recul (Tirages 3-10)", layout="wide")
+st.set_page_config(page_title="IA V44 - Radar de Pertinence", layout="wide")
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ EXTENSIF ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
@@ -34,7 +31,35 @@ Loto,2026-04-25,9,17,22,25,49,3,0
 EuroMillions,2026-04-17,11,14,19,36,49,6,7
 Loto,2026-04-23,2,12,16,20,26,2,0"""
 
-# --- 3. DÉTECTEUR D'AGRÉGATS SUR LA FENÊTRE CIBLÉE ---
+# --- 3. ANALYSEUR DES TENDANCES MENSUELLES ---
+def analyser_repetitions_mensuelles(df_jeu):
+    tous_nums_mois = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten()
+    compteur_mois = Counter(int(x) for x in tous_nums_mois)
+    piliers_mensuels = [num for num, freq in compteur_mois.items() if freq >= 2]
+    return piliers_mensuels, compteur_mois
+
+# --- 4. CALCULATEUR DYNAMIQUE DES SAUTS ---
+def calculer_tendances_sauts(df_jeu):
+    tous_sauts = []
+    tirages = df_jeu[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
+    
+    for i in range(len(tirages) - 1):
+        t_actuel = sorted([int(x) for x in tirages[i]])
+        t_precedent = sorted([int(x) for x in tirages[i+1]])
+        
+        for n_a in t_actuel:
+            ecarts = [n_a - n_p for n_p in t_precedent]
+            saut_le_plus_proche = min(ecarts, key=abs)
+            if saut_le_plus_proche != 0:
+                tous_sauts.append(saut_le_plus_proche)
+                
+    compteur = Counter(tous_sauts)
+    top_sauts = [saut for saut, freq in compteur.most_common(2)]
+    while len(top_sauts) < 2:
+        top_sauts.append(1)
+    return top_sauts
+
+# --- 5. DÉTECTEUR D'AGRÉGATS ---
 def detecter_aggregats(df_fenetre):
     liaisons = []
     tirages = df_fenetre[['N1', 'N2', 'N3', 'N4', 'N5']].values.tolist()
@@ -46,91 +71,94 @@ def detecter_aggregats(df_fenetre):
                 liaisons.append(t_trie[i+1])
     return Counter(liaisons)
 
-# --- 4. MOTEUR ALGORITHMIQUE CŒUR DE RECUL (8 TIRAGES RESTANTS) ---
-def generer_mutation_coeur_v44(df_hist, jeu_type):
+# --- 6. MOTEUR ALGORITHMIQUE AVEC CRITÈRE DE PERTINENCE PROCHE ---
+def generer_mutation_pertinence_v44(df_hist, jeu_type):
     est_loto = (jeu_type == "Loto")
+    max_num = 49 if est_loto else 50
     df_jeu = df_hist[df_hist['Jeu'] == jeu_type].reset_index(drop=True)
     
-    # APPLICATION DE TA MÉTHODE : On écarte les tirages 1 et 2 (index 0 et 1)
-    # On isole strictement les 8 tirages restants de la plage de 10 (index 2 à 10)
-    df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
+    piliers_mensuels, compteur_mois = analyser_repetitions_mensuelles(df_jeu)
+    saut1, saut2 = calculer_tendances_sauts(df_jeu)
     
-    # Extraction des numéros maîtres du cœur (nettement plus condensé !)
-    tous_maitres = sorted(list(set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())))
+    df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
+    pool_brut = set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
+    
+    pool_derive = set()
+    for n in pool_brut:
+        pool_derive.add(n)
+        if 1 <= n + saut1 <= max_num: pool_derive.add(n + saut1)
+        if 1 <= n + saut2 <= max_num: pool_derive.add(n + saut2)
+            
+    tous_maitres = sorted(list(pool_derive.union(set(piliers_mensuels))))
+    
+    signaux_proches = [n for n in tous_maitres if n in piliers_mensuels and n in pool_derive]
     
     scores_aggregats = detecter_aggregats(df_coeur)
     freq_brute = Counter(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
-    # Valorisation forte des tirages 6 et 7 (index 5 et 6 dans l'historique global, soit index 3 et 4 de notre df_coeur)
-    # On ajoute un bonus de sur-pondération pour pousser l'algorithme génétique à prioriser ces zones
     poids_nums = {}
     for n in tous_maitres:
-        poids_nums[n] = freq_brute[n] * 4 + scores_aggregats.get(n, 0) * 6
+        bonus_pertinence = 15 if n in signaux_proches else 0
+        bonus_mensuel = compteur_mois.get(n, 0) * 3
+        poids_nums[n] = freq_brute.get(n, 1) * 4 + scores_aggregats.get(n, 0) * 6 + bonus_mensuel + bonus_pertinence
 
     meilleur_bloc_six = []
     max_score_bloc = -1
     
-    # 300 simulations stochastiques pour compacter le pool restreint
     for _ in range(300):
         bloc_test = []
         pool = tous_maitres.copy()
         random.shuffle(pool)
         
-        # Étape 1 : Placement des numéros uniques
         while len(pool) >= 5:
             bloc_test.append(sorted(pool[:5]))
             pool = pool[5:]
             
-        # Étape 2 : Recouvrement forcé (haute condensation) pour atteindre 6 grilles
         while len(bloc_test) < 6:
             echantillon = random.sample(tous_maitres, k=min(5, len(tous_maitres)))
             if len(pool) > 0:
                 for i in range(min(len(pool), 5)):
-                    if pool[i] not in echantillon:
-                        echantillon[i] = pool[i]
+                    if pool[i] not in echantillon: echantillon[i] = pool[i]
             
             cand = sorted(echantillon)
-            if cand not in bloc_test and len(cand) == 5:
-                bloc_test.append(cand)
+            if cand not in bloc_test and len(cand) == 5: bloc_test.append(cand)
         
-        score_bloc = sum(sum(poids_nums[n] for n in grille) for grille in bloc_test)
+        score_bloc = sum(sum(poids_nums.get(n, 1) for n in grille) for grille in bloc_test)
         if score_bloc > max_score_bloc:
             max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
-    # Traitement des Étoiles / Chances filtrées sur le cœur de recul
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
     stars_candidates = sorted(list(set(int(s) for s in df_coeur[e_cols].values.flatten() if s > 0)))
-    
+    max_star = 10 if est_loto else 12
     while len(stars_candidates) < 6:
-        stars_candidates.append(random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
+        stars_candidates.append(random.choice(range(1, max_star + 1)))
         
-    return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres
+    return meilleur_bloc_six[:6], stars_candidates[:6], tous_maitres, (saut1, saut2), signaux_proches
 
-# --- 5. INTERFACE STREAMLIT ---
-st.title("🌌 IA V44 - ULTRA-CONDENSATION (CŒUR DE RECUL)")
-st.write("Méthode d'incubation : Les tirages 1-2 sont éliminés. Focus intégral sur les 8 tirages restants (3 à 10) pour maximiser le croisement des numéros.")
+# --- 7. INTERFACE STREAMLIT ---
+st.title("🌌 IA V44 - COUPLAGE PERTINENCE PROCHE & INCUBATION")
+st.write("Analyse Prédictive : L'algorithme isole les numéros pivots qui valident à la fois la répétition mensuelle et les dérives géométriques.")
 
 df = pd.read_csv(io.StringIO(csv_data))
 col_loto, col_euro = st.columns(2)
 
 with col_loto:
-    st.header("🎰 FILET RECOUVREMENT LOTO")
-    grilles_l, ch_l, maitres_l = generer_mutation_coeur_v44(df, "Loto")
-    st.info(f"🧬 **Pool restreint de {len(maitres_l)} numéros maîtres :** {maitres_l}")
+    st.header("🎰 LOTO - INTERSECTION")
+    grilles_l, ch_l, maitres_l, sauts_l, signaux_l = generer_mutation_pertinence_v44(df, "Loto")
+    st.warning(f"🎯 **Signaux Proches Détectés (Sauts {sauts_l}) :** {signaux_l}")
+    st.info(f"🧬 **Filet Global Adapté ({len(maitres_l)} numéros) :** {maitres_l}")
     st.markdown("---")
     for idx, g in enumerate(grilles_l):
-        grille_clean = [int(n) for n in g]
-        chance_clean = int(ch_l[idx])
-        st.success(f"**Grille {idx+1} :** {grille_clean} | **Chance :** [{chance_clean}]")
+        st.success(f"**Grille {idx+1} :** {[int(n) for n in g]} | **Chance :** [{int(ch_l[idx])}]")
 
 with col_euro:
-    st.header("🇪🇺 FILET RECOUVREMENT EUROMILLIONS")
-    grilles_e, et_e, maitres_e = generer_mutation_coeur_v44(df, "EuroMillions")
-    st.info(f"🧬 **Pool restreint de {len(maitres_e)} numéros maîtres :** {maitres_e}")
+    st.header("🇪🇺 EUROMILLIONS - INTERSECTION")
+    grilles_e, et_e, maitres_e, sauts_e, signaux_e = generer_mutation_pertinence_v44(df, "EuroMillions")
+    st.warning(f"🎯 **Signaux Proches Détectés (Sauts {sauts_e}) :** {signaux_e}")
+    st.info(f"🧬 **Filet Global Adapté ({len(maitres_e)} numéros) :** {maitres_e}")
     st.markdown("---")
     for idx, g in enumerate(grilles_e):
-        grille_clean = [int(n) for n in g]
         e1 = int(et_e[idx % len(et_e)])
         e2 = int(et_e[(idx + 1) % len(et_e)])
-        st.error(f"**Grille {idx+1} :** {grille_clean} | **Étoiles :** {sorted([e1, e2])}")
+        st.error(f"**Grille {idx+1} :** {[int(n) for n in g]} | **Étoiles :** {sorted([e1, e2])}")
