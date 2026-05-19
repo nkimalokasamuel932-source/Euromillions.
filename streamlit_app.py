@@ -71,7 +71,6 @@ def generer_et_evaluer_six_grilles(df_hist, jeu_type):
     df_coeur = df_jeu.iloc[2:10].reset_index(drop=True)
     pool_brut = set(int(x) for x in df_coeur[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
-    # Bloc Résonance Courte (tirages très proches de l'incubation)
     bloc_resonance = set(int(x) for x in df_coeur.iloc[0:2][['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
     
     pool_translate = set()
@@ -89,7 +88,6 @@ def generer_et_evaluer_six_grilles(df_hist, jeu_type):
     for n in tous_maitres:
         poids_nums[n] = freq_brute.get(n, 1) * 4 + scores_aggregats.get(n, 0) * 6
 
-    # 1. Génération classique du bloc de 6 grilles optimisées
     meilleur_bloc_six = []
     max_score_bloc = -1
     for _ in range(300):
@@ -114,20 +112,17 @@ def generer_et_evaluer_six_grilles(df_hist, jeu_type):
             max_score_bloc = score_bloc
             meilleur_bloc_six = bloc_test
 
-    # Traitement des Étoiles pour les 6 grilles
     e_cols = ['E1', 'E2'] if not est_loto else ['E1']
     stars_candidates = sorted(list(set(int(s) for s in df_coeur[e_cols].values.flatten() if s > 0)))
     max_star = 10 if est_loto else 12
     while len(stars_candidates) < 6:
         stars_candidates.append(random.choice(range(1, max_star + 1)))
 
-    # 2. ÉVALUATION INTERNE DES 6 GRILLES GÉNÉRÉES POUR EXTRAIRE LE TOP 2
     scores_grilles = []
     for idx, g in enumerate(meilleur_bloc_six):
         score_base = sum(poids_nums.get(n, 1) for n in g)
         bonus_resonance = sum(20 for n in g if n in bloc_resonance)
         bonus_translation = sum(20 for n in g if n in pool_translate)
-        
         score_total = score_base + bonus_resonance + bonus_translation
         scores_grilles.append((idx, score_total))
         
@@ -149,28 +144,33 @@ with col_loto:
     g_l, ch_l, v_l, top_l = generer_et_evaluer_six_grilles(df, "Loto")
     
     st.markdown("### 🎯 LES 2 MEILLEURES PROPOSITIONS À JOUER")
-    st.success(f"🔥 **PRIORITÉ 1 (Grille {top_l[0]+1}) :** {[int(n) for n in g_l[top_l[0]]]} | **Chance :** [{int(ch_l[top_l[0]])}]")
-    st.success(f"💎 **PRIORITÉ 2 (Grille {top_l[1]+1}) :** {[int(n) for n in g_l[top_l[1]]]} | **Chance :** [{int(ch_l[top_l[1]])}]")
+    st.success(f"🔥 **PRIORITÉ 1 (Grille {top_l[0]+1}) :** {[int(n) for n in g_l[top_l[0]]]} | **Chance :** [{int(ch_l[top_l[0] % len(ch_l)])}]")
+    st.success(f"💎 **PRIORITÉ 2 (Grille {top_l[1]+1}) :** {[int(n) for n in g_l[top_l[1]]]} | **Chance :** [{int(ch_l[top_l[1] % len(ch_l)])}]")
     
     st.markdown("---")
     st.markdown("#### 📂 Historique complet des 6 grilles générées :")
     for idx, g in enumerate(g_l):
-        st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Chance : [{int(ch_l[idx])}]")
+        st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Chance : [{int(ch_l[idx % len(ch_l)])}]")
 
 with col_euro:
     st.header("🇪🇺 EUROMILLIONS - SÉLECTION D'ÉLITE")
     g_e, et_e, v_e, top_e = generer_et_evaluer_six_grilles(df, "EuroMillions")
     
     st.markdown("### 🎯 LES 2 MEILLEURES PROPOSITIONS À JOUER")
-    e1_t1, e2_t1 = int(et_e[top_e[0] % len(et_e)]), int(et_e[(top_e[0] + 1) % len(et_e)])
-    e1_t2, e2_t2 = int(et_e[top_e[1] % len(et_e)]), int(et_e[(top_e[1] + 1) % len(et_e)])
+    e1_t1 = int(et_e[top_e[0] % len(et_e)])
+    e2_t1 = int(et_e[(top_e[0] + 1) % len(et_e)])
+    e1_t2 = int(et_e[top_e[1] % len(et_e)])
+    e2_t2 = int(et_e[(top_e[1] + 1) % len(et_e)])
     
-    st.error(f"🔥 **PRIORITÉ 1 (Grille {top_e[0]+1}) :** {[int(n) for n in g_e[top_e[0]]]} | **Étoiles :** {sorted([e1_t1, e2_t1])}")
-    st.error(f"💎 **PRIORITÉ 2 (Grille {top_e[1]+1}) :** {[int(n) for n in g_e[top_e[1]]]} | **Étoiles :** {sorted([e1_t2, e2_t2])}")
+    st.error(f"🔥 **PRIORITÉ 1 (Grille {top_e[0]+1}) :** {[int(n) for n in g_e[top_e[0]]]} | **Étoiles :** {sorted(list(set([e1_t1, e2_t1])))}")
+    st.error(f"💎 **PRIORITÉ 2 (Grille {top_e[1]+1}) :** {[int(n) for n in g_e[top_e[1]]]} | **Étoiles :** {sorted(list(set([e1_t2, e2_t2])))}")
     
     st.markdown("---")
     st.markdown("#### 📂 Historique complet des 6 grilles générées :")
     for idx, g in enumerate(g_e):
         ee1 = int(et_e[idx % len(et_e)])
         ee2 = int(et_e[(idx + 1) % len(et_e)])
+        # Si par hasard ee1 == ee2 suite au modulo, on assure une deuxième étoile différente
+        if ee1 == ee2:
+            ee2 = int(et_e[(idx + 2) % len(et_e)])
         st.text(f"Grille {idx+1} : {[int(n) for n in g]} | Étoiles : {sorted([ee1, ee2])}")
