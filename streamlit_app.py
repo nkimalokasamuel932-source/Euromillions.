@@ -9,6 +9,7 @@ st.set_page_config(page_title="IA V45 Ultra - Option Condensation", layout="wide
 
 # --- 2. HISTORIQUE EN CIRCUIT FERMÉ (Mis à jour avec le tirage de ce soir !) ---
 csv_data = """Jeu,Date,N1,N2,N3,N4,N5,E1,E2
+EuroMillions,2026-05-22,6,22,26,31,37,5,8
 EuroMillions,2026-05-19,2,12,20,38,45,1,9
 Loto,2026-05-18,14,32,33,36,49,0,0
 Loto,2026-05-16,1,12,30,32,34,6,0
