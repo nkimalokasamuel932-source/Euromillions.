@@ -108,7 +108,10 @@ with tab_visuel:
         restants = [n for n in liste_nums if n not in numeros_sortis_3_tirages]
         st.markdown(f"#### {nom_col}")
         
-        cols_badge = st.columns(9)
+        # CORRECTION DE L'ERREUR INDEX_ERROR : Génération dynamique des colonnes
+        nb_elements = len(liste_nums)
+        cols_badge = st.columns(nb_elements)
+        
         for idx, n in enumerate(liste_nums):
             if n in restants:
                 cols_badge[idx].markdown(f"<div style='background-color:#047857;color:white;padding:5px;border-radius:4px;text-align:center;font-weight:bold;box-shadow: 1px 1px 3px black;'>🟢 {n}</div>", unsafe_allow_html=True)
@@ -188,4 +191,32 @@ if st.button("💾 Enregistrer le Tirage et Mettre à jour l'Observatoire"):
 st.markdown("---")
 
 # =====================================================================
-# 6
+# 6. GRILLES D'ATTAQUE GÉNÉRÉES
+# =====================================================================
+st.subheader("🎰 4️⃣ Grilles de Combat Combinées (Basées sur les Restants)")
+grilles_actives = grilles_loto if jeu == "Loto" else grilles_euro
+
+for nom, num_liste, bonus in grilles_actives:
+    st.markdown(f"**{nom}**")
+    cols = st.columns(7)
+    for i, num in enumerate(sorted(num_liste)):
+        cols[i].button(f"💎 {num}", key=f"btn_{nom}_{i}", disabled=True)
+    if jeu == "Loto":
+        cols[5].button(f"🌟 {bonus}", key=f"chance_{nom}", disabled=True)
+    else:
+        cols[5].button(f"⭐ {bonus[0]}", key=f"et1_{nom}", disabled=True)
+        cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
+
+# =====================================================================
+# 7. HISTORIQUE BRUT DANS LE PANNEAU LATÉRAL
+# =====================================================================
+st.sidebar.header("📊 Fichier CSV Global")
+if os.path.exists(CSV_FILE):
+    df_historique = pd.read_csv(CSV_FILE)
+    st.sidebar.dataframe(df_historique, height=400)
+    if st.sidebar.button("🗑️ Vider le fichier CSV"):
+        os.remove(CSV_FILE)
+        st.sidebar.warning("Base réinitialisée.")
+        st.rerun()
+else:
+    st.sidebar.info("Aucun tirage stocké pour le moment.")
