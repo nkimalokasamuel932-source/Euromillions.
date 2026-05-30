@@ -18,12 +18,12 @@ ETOILES_EURO = [[1, 9], [3, 11], [2, 8], [4, 12]]
 CSV_FILE = "historique_tirages.csv"
 
 # =====================================================================
-# 2. MOTEUR STATISTIQUE ET CALCULS DES ÉCARTS (SANS ERREUR)
+# 2. MOTEUR STATISTIQUE ET CALCULS DES ÉCARTS
 # =====================================================================
 numeros_sortis_3_tirages = set()
 dictionnaire_ecarts = {}
 
-# Initialisation par défaut pour chaque numéro
+# Initialisation par défaut pour chaque numéro du circuit fermé
 for col_name, nums in COLONNES_BRUTES.items():
     for n in nums:
         dictionnaire_ecarts[n] = "Non sorti (+3)"
@@ -38,9 +38,10 @@ if os.path.exists(CSV_FILE):
             derniers_3 = df_hist.tail(3)
             for _, row in derniers_3.iterrows():
                 for col_key in ["N1", "N2", "N3", "N4", "N5"]:
-                    numeros_sortis_3_tirages.add(int(row[col_key]))
+                    if pd.notna(row[col_key]):
+                        numeros_sortis_3_tirages.add(int(row[col_key]))
             
-            # 2. Calcul de la distance exacte (sans variable corrompue)
+            # 2. Calcul de la distance exacte depuis la dernière apparition
             for col_name, nums in COLONNES_BRUTES.items():
                 for n in nums:
                     apparitions = df_hist[(df_hist["N1"] == n) | (df_hist["N2"] == n) | 
@@ -56,9 +57,9 @@ if os.path.exists(CSV_FILE):
                     else:
                         dictionnaire_ecarts[n] = "Non sorti (+3)"
     except Exception as e:
-        st.error(f"Erreur lors de l'analyse statistique : {e}")
+        st.error(f"Erreur d'analyse statistique : {e}")
 
-# Fonction de filtrage des colonnes pour la création des grilles
+# Fonction de filtrage des colonnes par roulement interne strict
 def filtrer_colonne_active(nom_colonne, taille_demandee=5):
     numeros_bruts = COLONNES_BRUTES[nom_colonne]
     numeros_filtrés = [n for n in numeros_bruts if n not in numeros_sortis_3_tirages]
@@ -73,7 +74,7 @@ col1_active = filtrer_colonne_active("COLONNE 1 (Verrous)")
 col2_active = filtrer_colonne_active("COLONNE 2 (Résonance)")
 col3_active = filtrer_colonne_active("COLONNE 3 (Dérive)")
 
-# Assemblage des grilles de combat
+# Assemblage des grilles de combat dynamiques
 grilles_loto = [
     ("Grille Dérive (Col 3)", [col3_active[0], col3_active[1], col3_active[2], col3_active[3], col3_active[4]], CHANCES_LOTO[3]),
     ("Grille Centrale (Col 0 & 2)", [col0_active[0], col0_active[1], col0_active[2], col2_active[0], col2_active[1]], CHANCES_LOTO[2]),
@@ -89,18 +90,17 @@ grilles_euro = [
 ]
 
 # =====================================================================
-# 3. INTERFACE GRAPHICS STREAMLIT
+# 3. INTERFACE GRAPHIQUE STREAMLIT
 # =====================================================================
 st.set_page_config(page_title="Observatoire Circuit Fermé", layout="centered")
 st.title("🔒 Analyseur par Colonne & Numéros Restants")
 
 # =====================================================================
-# 4. OBSERVATOIRE DÉTAILLÉ COLONNE PAR COLONNE (SORTIES VS RESTANTS)
+# 4. OBSERVATOIRE DÉTAILLÉ COLONNE PAR COLONNE
 # =====================================================================
 st.subheader("📊 1️⃣ État de vos Colonnes (Fenêtre de 3 Tirages)")
 st.write("Visualisez pour chaque colonne les numéros disponibles et l'historique des sorties récentes :")
 
-# Séparation en deux onglets pour une lecture plus propre
 tab_visuel, tab_tableaux = st.tabs(["🖼️ Vue Visuelle", "📝 Vue Tableaux Détaillés"])
 
 with tab_visuel:
@@ -163,4 +163,29 @@ else:
     col_bonus = st.columns(3)
     et1 = col_bonus[0].number_input("Étoile 1", min_value=0, max_value=12, value=0)
     et2 = col_bonus[1].number_input("Étoile 2", min_value=0, max_value=12, value=0)
-    etoiles_sorties =
+    etoiles_sorties = [e for e in [et1, et2] if e != 0]
+    e1_csv, e2_csv = (et1, et2) if len(etoiles_sorties) == 2 else (0, 0)
+
+if st.button("💾 Enregistrer le Tirage et Mettre à jour l'Observatoire"):
+    if len(tirage_numeros_propres) == 5:
+        nouvelle_ligne = {
+            "Jeu": jeu, "Date": str(date_tirage),
+            "N1": n1, "N2": n2, "N3": n3, "N4": n4, "N5": n5,
+            "E1": e1_csv, "E2": e2_csv
+        }
+        df_nouveau = pd.DataFrame([nouvelle_ligne])
+        if os.path.exists(CSV_FILE):
+            df_existant = pd.read_csv(CSV_FILE)
+            df_final = pd.concat([df_existant, df_nouveau], ignore_index=True)
+        else:
+            df_final = df_nouveau
+        df_final.to_csv(CSV_FILE, index=False)
+        st.success("✅ Tirage ajouté au fichier CSV. Calcul des écarts mis à jour !")
+        st.rerun()
+    else:
+        st.error("⚠️ Saisie incomplète (5 numéros obligatoires).")
+
+st.markdown("---")
+
+# =====================================================================
+# 6
