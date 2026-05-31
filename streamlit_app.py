@@ -12,8 +12,8 @@ COLONNES_BRUTES = {
     "COLONNE 3 (Dérive)": [7, 16, 21, 27, 28, 31, 37, 38, 45, 48]
 }
 
-CHANCES_LOTO = [3, 6, 2, 7]
-ETOILES_EURO = [[1, 9], [3, 11], [2, 8], [4, 12]]
+CHANCES_LOTO = [3, 6, 2, 7, 5, 9]
+ETOILES_EURO = [[1, 9], [3, 11], [2, 8], [4, 12], [5, 10], [6, 7]]
 
 CSV_LOTO = "historique_loto.csv"
 CSV_EURO = "historique_euromillions.csv"
@@ -56,172 +56,93 @@ if not os.path.exists(CSV_EURO):
     pd.DataFrame(hist_euro).to_csv(CSV_EURO, index=False)
 
 # =====================================================================
-# 2. INTERFACE GRAPHIQUE STREAMLIT
+# 3. INTERFACE GRAPHIQUE STREAMLIT
 # =====================================================================
 st.set_page_config(page_title="Observatoire Circuit Fermé", layout="centered")
-st.title("🔒 Radar de Sourdine V45 — Circuit Réduit")
+st.title("🔒 Radar Croisé V45 — Maillage Intensif")
 
 jeu = st.radio("🔄 Sélectionnez le moteur de jeu actif :", ("Loto", "EuroMillions"), horizontal=True)
 
 FICHIER_ACTIF = CSV_LOTO if jeu == "Loto" else CSV_EURO
 
 # =====================================================================
-# 3. EXTRACTION ET MISE EN SOURDINE DES 3 DERNIERS TIRAGES
+# 4. EXTRACTION ET FILTRAGE DES NUMÉROS
 # =====================================================================
 numeros_sortis_3_tirages = set()
-dictionnaire_ecarts = {}
-
-for col_name, nums in COLONNES_BRUTES.items():
-    for n in nums:
-        dictionnaire_ecarts[n] = "Non sorti (+12)"
 
 if os.path.exists(FICHIER_ACTIF):
     try:
         df_hist = pd.read_csv(FICHIER_ACTIF)
         if not df_hist.empty:
-            total_tirages = len(df_hist)
-            
-            # CAPTURE ET SOURDINE STRICTE DES 3 DERNIERS TIRAGES
             derniers_3 = df_hist.tail(3)
             for _, row in derniers_3.iterrows():
                 for col_key in ["N1", "N2", "N3", "N4", "N5"]:
                     if pd.notna(row[col_key]):
                         numeros_sortis_3_tirages.add(int(row[col_key]))
-            
-            # Calcul des distances thermiques
-            for col_name, nums in COLONNES_BRUTES.items():
-                for n in nums:
-                    apparitions = df_hist[(df_hist["N1"] == n) | (df_hist["N2"] == n) | 
-                                          (df_hist["N3"] == n) | (df_hist["N4"] == n) | 
-                                          (df_hist["N5"] == n)]
-                    if not apparitions.empty:
-                        dernier_index = int(apparitions.index[-1])
-                        distance = total_tirages - 1 - dernier_index
-                        if distance == 0:
-                            dictionnaire_ecarts[n] = "Tirage précédent (GELÉ ❌)"
-                        elif distance < 3:
-                            dictionnaire_ecarts[n] = f"Il y a {distance} tirage(s) (GELÉ ❌)"
-                        else:
-                            dictionnaire_ecarts[n] = f"Il y a {distance} tirage(s) (DISPO 🟢)"
-                    else:
-                        dictionnaire_ecarts[n] = "Non sorti sur les 12 tirages (DISPO 🟢)"
     except Exception as e:
         st.error(f"Erreur moteur : {e}")
 
-# Fonction de filtrage par roulement interne
-def filtrer_colonne_active(nom_colonne, taille_demandee=5):
-    numeros_bruts = COLONNES_BRUTES[nom_colonne]
-    # Seuls les numéros n'appartenant PAS aux 3 derniers tirages sont conservés
-    numeros_filtrés = [n for n in numeros_bruts if n not in numeros_sortis_3_tirages]
-    if len(numeros_filtrés) < taille_demandee:
-        for n in numeros_bruts:
-            if n not in numeros_filtrés:
-                numeros_filtrés.append(n)
-    return numeros_filtrés[:taille_demandee]
+# Extraction des forces disponibles par colonne (sans limite de taille pour le mixage)
+def obtenir_disponibles(nom_colonne):
+    return [n for n in COLONNES_BRUTES[nom_colonne] if n not in numeros_sortis_3_tirages]
 
-col0_active = filtrer_colonne_active("COLONNE 0 (Ancrage)")
-col1_active = filtrer_colonne_active("COLONNE 1 (Verrous)")
-col2_active = filtrer_colonne_active("COLONNE 2 (Résonance)")
-col3_active = filtrer_colonne_active("COLONNE 3 (Dérive)")
+# Si une colonne est trop vide, on remet ses numéros de secours pour éviter les lignes vides
+def sécuriser_liste(liste_dispo, nom_colonne):
+    if len(liste_dispo) < 5:
+        return liste_dispo + [n for n in COLONNES_BRUTES[nom_colonne] if n not in liste_dispo]
+    return liste_dispo
 
-# Grilles d'attaques épurées
+disp0 = sécuriser_liste(obtenir_disponibles("COLONNE 0 (Ancrage)"), "COLONNE 0 (Ancrage)")
+disp1 = sécuriser_liste(obtenir_disponibles("COLONNE 1 (Verrous)"), "COLONNE 1 (Verrous)")
+disp2 = sécuriser_liste(obtenir_disponibles("COLONNE 2 (Résonance)"), "COLONNE 2 (Résonance)")
+disp3 = sécuriser_liste(obtenir_disponibles("COLONNE 3 (Dérive)"), "COLONNE 3 (Dérive)")
+
+# =====================================================================
+# GENERATION DU NOUVEAU MAILLAGE INTER-AXES
+# =====================================================================
 grilles_loto = [
-    ("Grille Dérive (Col 3)", [col3_active[0], col3_active[1], col3_active[2], col3_active[3], col3_active[4]], CHANCES_LOTO[3]),
-    ("Grille Centrale (Col 0 & 2)", [col0_active[0], col0_active[1], col0_active[2], col2_active[0], col2_active[1]], CHANCES_LOTO[2]),
-    ("Grille Verrous (Col 1)", [col1_active[0], col1_active[1], col1_active[2], col1_active[3], col1_active[4]], CHANCES_LOTO[1]),
-    ("Grille Transversale (Mixte)", [col0_active[0], col2_active[2], col0_active[1], col2_active[3], col1_active[0]], CHANCES_LOTO[0])
+    ("Grille Dérive pure (Axe Col 3)", [disp3[0], disp3[1], disp3[2], disp3[3], disp3[4]], CHANCES_LOTO[3]),
+    ("Grille Centrale pure (Axe Col 0 & 2)", [disp0[0], disp0[1], disp0[2], disp2[0], disp2[1]], CHANCES_LOTO[2]),
+    ("Grille Verrous pure (Axe Col 1)", [disp1[0], disp1[1], disp1[2], disp1[3], disp1[4]], CHANCES_LOTO[1]),
+    
+    # LES FUSIONS INTER-COLONNES (POUR ASSOCIER ANCRAGE, VERROUS ET DÉRIVE ENSEMBLE)
+    ("Grille Inter-Axes A (Fusion Ancrage + Verrous + Dérive)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], CHANCES_LOTO[4]),
+    ("Grille Inter-Axes B (Maillage Transversal Alterné)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], CHANCES_LOTO[5]),
+    
+    ("Grille Transversale (Mixte Historique)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], CHANCES_LOTO[0])
 ]
 
 grilles_euro = [
-    ("Grille Dérive (Col 3)", [col3_active[0], col3_active[1], col3_active[2], col3_active[3], col3_active[4]], ETOILES_EURO[3]),
-    ("Grille Centrale (Col 0 & 2)", [col0_active[0], col0_active[1], col0_active[2], col2_active[0], col2_active[1]], ETOILES_EURO[2]),
-    ("Grille Verrous (Col 1)", [col1_active[0], col1_active[1], col1_active[2], col1_active[3], col1_active[4]], ETOILES_EURO[1]),
-    ("Grille Transversale (Mixte)", [col0_active[0], col2_active[2], col0_active[1], col2_active[3], col1_active[0]], ETOILES_EURO[0])
+    ("Grille Dérive pure (Axe Col 3)", [disp3[0], disp3[1], disp3[2], disp3[3], disp3[4]], ETOILES_EURO[3]),
+    ("Grille Centrale pure (Axe Col 0 & 2)", [disp0[0], disp0[1], disp0[2], disp2[0], disp2[1]], ETOILES_EURO[2]),
+    ("Grille Verrous pure (Axe Col 1)", [disp1[0], disp1[1], disp1[2], disp1[3], disp1[4]], ETOILES_EURO[1]),
+    
+    ("Grille Inter-Axes A (Fusion Ancrage + Verrous + Dérive)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], ETOILES_EURO[4]),
+    ("Grille Inter-Axes B (Maillage Transversal Alterné)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], ETOILES_EURO[5]),
+    
+    ("Grille Transversale (Mixte Historique)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], ETOILES_EURO[0])
 ]
 
-# CALCUL DE L'ÉTAT DU CIRCUIT RÉDUIT
-total_numeros_bruts = sum(len(v) for v in COLONNES_BRUTES.values())
-tous_nums_bruts = set([n for sublist in COLONNES_BRUTES.values() for n in sublist])
-total_exclus_circuit = len(tous_nums_bruts.intersection(numeros_sortis_3_tirages))
-total_actifs_circuit = total_numeros_bruts - total_exclus_circuit
-
-# Affichage du Panneau d'indicateur du circuit réduit
-st.info(f"💡 **Indicateur de Sourdine :** Le système a analysé les 3 dernières sorties et a détecté **{total_exclus_circuit} numéros chauds** appartenant à ton Circuit Fermé. Ils ont été placés en sourdine. Ton champ de prédiction actuel est restreint à **{total_actifs_circuit} numéros restants**.")
-
 # =====================================================================
-# 4. AFFICHAGE DES COLONNES
+# AFFICHAGE INTERFACE STREAMLIT
 # =====================================================================
+st.subheader(f"📊 1️⃣ Circuit Réduit Actif ({jeu})")
+for nom_col, liste_nums in COLONNES_BRUTES.items():
+    restants = [n for n in liste_nums if n not in numeros_sortis_3_tirages]
+    st.markdown(f"**{nom_col}**")
+    cols_badge = st.columns(len(liste_nums))
+    for idx, n in enumerate(liste_nums):
+        if n in restants:
+            cols_badge[idx].markdown(f"<div style='background-color:#047857;color:white;padding:5px;border-radius:4px;text-align:center;font-weight:bold;'>🟢 {n}</div>", unsafe_allow_html=True)
+        else:
+            cols_badge[idx].markdown(f"<div style='background-color:#1e293b;color:#64748b;padding:5px;border-radius:4px;text-align:center;text-decoration:line-through;'>❌ {n}</div>", unsafe_allow_html=True)
+
 st.markdown("---")
-st.subheader(f"📊 1️⃣ Cartographie du Circuit Réduit ({jeu})")
-
-tab_visuel, tab_tableaux = st.tabs(["🖼️ Vue Sourdine (Visuelle)", "📝 Statut Thermique"])
-
-with tab_visuel:
-    for nom_col, liste_nums in COLONNES_BRUTES.items():
-        restants = [n for n in liste_nums if n not in numeros_sortis_3_tirages]
-        st.markdown(f"#### {nom_col} ({len(restants)} restants)")
-        nb_elements = len(liste_nums)
-        cols_badge = st.columns(nb_elements)
-        for idx, n in enumerate(liste_nums):
-            if n in restants:
-                cols_badge[idx].markdown(f"<div style='background-color:#047857;color:white;padding:5px;border-radius:4px;text-align:center;font-weight:bold;box-shadow: 1px 1px 3px black;'>🟢 {n}</div>", unsafe_allow_html=True)
-            else:
-                cols_badge[idx].markdown(f"<div style='background-color:#1e293b;color:#64748b;padding:5px;border-radius:4px;text-align:center;text-decoration:line-through;'>❌ {n}</div>", unsafe_allow_html=True)
-        st.markdown(" ")
-
-with tab_tableaux:
-    for nom_col, liste_nums in COLONNES_BRUTES.items():
-        st.markdown(f"#### {nom_col}")
-        donnees_colonne = []
-        for n in liste_nums:
-            statut = "🟢 DISPONIBLE" if n not in numeros_sortis_3_tirages else "❌ EN SOURDINE"
-            historique_apparition = dictionnaire_ecarts.get(n, "Non sorti")
-            donnees_colonne.append({"Numéro": n, "Filtre Sourdine": statut, "Dernière Sortie": historique_apparition})
-        st.dataframe(pd.DataFrame(donnees_colonne), use_container_width=True, hide_index=True)
 
 # =====================================================================
-# 5. PANNEAU DE SAISIE
+# AFFICHAGE DES GRILLES DE COMBAT PROPOSÉES
 # =====================================================================
-st.markdown("---")
-st.subheader(f"🎯 2️⃣ Saisie manuelle (Nouveau Tirage {jeu})")
-date_tirage = st.date_input("Date du tirage :")
-
-col_saisie = st.columns(5)
-n1 = col_saisie[0].number_input("N° 1", min_value=0, max_value=50, value=0, key="n1")
-n2 = col_saisie[1].number_input("N° 2", min_value=0, max_value=50, value=0, key="n2")
-n3 = col_saisie[2].number_input("N° 3", min_value=0, max_value=50, value=0, key="n3")
-n4 = col_saisie[3].number_input("N° 4", min_value=0, max_value=50, value=0, key="n4")
-n5 = col_saisie[4].number_input("N° 5", min_value=0, max_value=50, value=0, key="n5")
-
-tirage_numeros_propres = [n for n in [n1, n2, n3, n4, n5] if n != 0]
-e1_csv, e2_csv = 0, 0
-
-if jeu == "Loto":
-    col_bonus = st.columns(3)
-    chance_sorti = col_bonus[0].number_input("Numéro Chance", min_value=0, max_value=10, value=0)
-    e1_csv = chance_sorti
-else:
-    col_bonus = st.columns(3)
-    et1 = col_bonus[0].number_input("Étoile 1", min_value=0, max_value=12, value=0)
-    et2 = col_bonus[1].number_input("Étoile 2", min_value=0, max_value=12, value=0)
-    e1_csv, e2_csv = et1, et2
-
-if st.button("💾 Enregistrer et recalculer le circuit réduit"):
-    if len(tirage_numeros_propres) == 5:
-        nouvelle_ligne = {"Jeu": jeu, "Date": str(date_tirage), "N1": n1, "N2": n2, "N3": n3, "N4": n4, "N5": n5, "E1": e1_csv, "E2": e2_csv}
-        df_nouveau = pd.DataFrame([nouvelle_ligne])
-        df_existant = pd.read_csv(FICHIER_ACTIF) if os.path.exists(FICHIER_ACTIF) else pd.DataFrame()
-        pd.concat([df_existant, df_nouveau], ignore_index=True).to_csv(FICHIER_ACTIF, index=False)
-        st.success(f"✅ Nouveau tirage enregistré. Sourdine mise à jour !")
-        st.rerun()
-    else:
-        st.error("⚠️ Saisie incomplète.")
-
-# =====================================================================
-# 6. GRILLES D'ATTAQUE GÉNÉRÉES
-# =====================================================================
-st.markdown("---")
-st.subheader("🎰 3️⃣ Prédictions — Vos Grilles sur Circuit Ultra-Réduit")
+st.subheader("🎰 2️⃣ Vos Propositions de Grilles (Moteur de Croisement Activé)")
 grilles_actives = grilles_loto if jeu == "Loto" else grilles_euro
 
 for nom, num_liste, bonus in grilles_actives:
@@ -236,12 +157,12 @@ for nom, num_liste, bonus in grilles_actives:
         cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
 
 # =====================================================================
-# 7. HISTORIQUE LATÉRAL
+# HISTORIQUE LATÉRAL
 # =====================================================================
-st.sidebar.header(f"📊 Historique Global {jeu}")
+st.sidebar.header(f"📊 Données {jeu}")
 if os.path.exists(FICHIER_ACTIF):
     df_side = pd.read_csv(FICHIER_ACTIF)
     st.sidebar.dataframe(df_side, height=400)
-    if st.sidebar.button("🗑️ Réinitialiser cette base"):
+    if st.sidebar.button("🗑️ Vider cette base uniquement"):
         os.remove(FICHIER_ACTIF)
         st.rerun()
