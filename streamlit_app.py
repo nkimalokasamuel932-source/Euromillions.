@@ -56,17 +56,23 @@ if not os.path.exists(CSV_EURO):
     pd.DataFrame(hist_euro).to_csv(CSV_EURO, index=False)
 
 # =====================================================================
-# 3. INTERFACE GRAPHIQUE STREAMLIT
+# 2. INTERFACE GRAPHIQUE STREAMLIT
 # =====================================================================
 st.set_page_config(page_title="Observatoire Circuit Fermé", layout="centered")
-st.title("🔒 Radar Croisé V45 — Maillage Intensif")
+st.title("🔒 Radar Croisé V45 — Inverseur de Sourdine")
 
 jeu = st.radio("🔄 Sélectionnez le moteur de jeu actif :", ("Loto", "EuroMillions"), horizontal=True)
+
+strategie = st.radio(
+    "🎯 Stratégie des grilles :",
+    ("🟢 Jouer les numéros Disponibles (Standard)", "❌ Jouer UNIQUEMENT les numéros Exclus (Sourdine Inverse)"),
+    horizontal=False
+)
 
 FICHIER_ACTIF = CSV_LOTO if jeu == "Loto" else CSV_EURO
 
 # =====================================================================
-# 4. EXTRACTION ET FILTRAGE DES NUMÉROS
+# 3. EXTRACTION ET FILTRAGE DES NUMÉROS
 # =====================================================================
 numeros_sortis_3_tirages = set()
 
@@ -82,67 +88,107 @@ if os.path.exists(FICHIER_ACTIF):
     except Exception as e:
         st.error(f"Erreur moteur : {e}")
 
-# Extraction des forces disponibles par colonne (sans limite de taille pour le mixage)
-def obtenir_disponibles(nom_colonne):
-    return [n for n in COLONNES_BRUTES[nom_colonne] if n not in numeros_sortis_3_tirages]
+def obtenir_numeros_ciblés(nom_colonne):
+    nums_bruts = COLONNES_BRUTES[nom_colonne]
+    if "UNIQUEMENT les numéros Exclus" in strategie:
+        cibles = [n for n in nums_bruts if n in numeros_sortis_3_tirages]
+    else:
+        cibles = [n for n in nums_bruts if n not in numeros_sortis_3_tirages]
+        
+    if len(cibles) < 5:
+        complements = [n for n in nums_bruts if n not in cibles]
+        cibles = cibles + complements
+    return cibles
 
-# Si une colonne est trop vide, on remet ses numéros de secours pour éviter les lignes vides
-def sécuriser_liste(liste_dispo, nom_colonne):
-    if len(liste_dispo) < 5:
-        return liste_dispo + [n for n in COLONNES_BRUTES[nom_colonne] if n not in liste_dispo]
-    return liste_dispo
-
-disp0 = sécuriser_liste(obtenir_disponibles("COLONNE 0 (Ancrage)"), "COLONNE 0 (Ancrage)")
-disp1 = sécuriser_liste(obtenir_disponibles("COLONNE 1 (Verrous)"), "COLONNE 1 (Verrous)")
-disp2 = sécuriser_liste(obtenir_disponibles("COLONNE 2 (Résonance)"), "COLONNE 2 (Résonance)")
-disp3 = sécuriser_liste(obtenir_disponibles("COLONNE 3 (Dérive)"), "COLONNE 3 (Dérive)")
+disp0 = obtenir_numeros_ciblés("COLONNE 0 (Ancrage)")
+disp1 = obtenir_numeros_ciblés("COLONNE 1 (Verrous)")
+disp2 = obtenir_numeros_ciblés("COLONNE 2 (Résonance)")
+disp3 = obtenir_numeros_ciblés("COLONNE 3 (Dérive)")
 
 # =====================================================================
-# GENERATION DU NOUVEAU MAILLAGE INTER-AXES
+# GENERATION DU MAILLAGE DYNAMIQUE
 # =====================================================================
 grilles_loto = [
     ("Grille Dérive pure (Axe Col 3)", [disp3[0], disp3[1], disp3[2], disp3[3], disp3[4]], CHANCES_LOTO[3]),
     ("Grille Centrale pure (Axe Col 0 & 2)", [disp0[0], disp0[1], disp0[2], disp2[0], disp2[1]], CHANCES_LOTO[2]),
     ("Grille Verrous pure (Axe Col 1)", [disp1[0], disp1[1], disp1[2], disp1[3], disp1[4]], CHANCES_LOTO[1]),
-    
-    # LES FUSIONS INTER-COLONNES (POUR ASSOCIER ANCRAGE, VERROUS ET DÉRIVE ENSEMBLE)
-    ("Grille Inter-Axes A (Fusion Ancrage + Verrous + Dérive)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], CHANCES_LOTO[4]),
-    ("Grille Inter-Axes B (Maillage Transversal Alterné)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], CHANCES_LOTO[5]),
-    
-    ("Grille Transversale (Mixte Historique)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], CHANCES_LOTO[0])
+    ("Grille Inter-Axes A (Fusion)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], CHANCES_LOTO[4]),
+    ("Grille Inter-Axes B (Maillage)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], CHANCES_LOTO[5]),
+    ("Grille Transversale (Mixte)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], CHANCES_LOTO[0])
 ]
 
 grilles_euro = [
     ("Grille Dérive pure (Axe Col 3)", [disp3[0], disp3[1], disp3[2], disp3[3], disp3[4]], ETOILES_EURO[3]),
     ("Grille Centrale pure (Axe Col 0 & 2)", [disp0[0], disp0[1], disp0[2], disp2[0], disp2[1]], ETOILES_EURO[2]),
     ("Grille Verrous pure (Axe Col 1)", [disp1[0], disp1[1], disp1[2], disp1[3], disp1[4]], ETOILES_EURO[1]),
-    
-    ("Grille Inter-Axes A (Fusion Ancrage + Verrous + Dérive)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], ETOILES_EURO[4]),
-    ("Grille Inter-Axes B (Maillage Transversal Alterné)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], ETOILES_EURO[5]),
-    
-    ("Grille Transversale (Mixte Historique)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], ETOILES_EURO[0])
+    ("Grille Inter-Axes A (Fusion)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], ETOILES_EURO[4]),
+    ("Grille Inter-Axes B (Maillage)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], ETOILES_EURO[5]),
+    ("Grille Transversale (Mixte)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], ETOILES_EURO[0])
 ]
 
+if "UNIQUEMENT les numéros Exclus" in strategie:
+    st.warning("⚠️ **MODE CHOC ACTIVÉ :** Radar inversé. Priorité aux numéros sortis récemment (Exclus).")
+else:
+    st.success("🟢 **MODE STANDARD ACTIVÉ :** Protection active, les numéros récents sont éliminés.")
+
 # =====================================================================
-# AFFICHAGE INTERFACE STREAMLIT
+# 4. AFFICHAGE DE LA CARTOGRAPHIE VISUELLE
 # =====================================================================
-st.subheader(f"📊 1️⃣ Circuit Réduit Actif ({jeu})")
+st.subheader(f"📊 Cartographie des Colonnes ({jeu})")
 for nom_col, liste_nums in COLONNES_BRUTES.items():
-    restants = [n for n in liste_nums if n not in numeros_sortis_3_tirages]
     st.markdown(f"**{nom_col}**")
     cols_badge = st.columns(len(liste_nums))
     for idx, n in enumerate(liste_nums):
-        if n in restants:
-            cols_badge[idx].markdown(f"<div style='background-color:#047857;color:white;padding:5px;border-radius:4px;text-align:center;font-weight:bold;'>🟢 {n}</div>", unsafe_allow_html=True)
+        if n in numeros_sortis_3_tirages:
+            cols_badge[idx].markdown(f"<div style='background-color:#991b1b;color:white;padding:5px;border-radius:4px;text-align:center;font-weight:bold;'>🔥 {n}</div>", unsafe_allow_html=True)
         else:
-            cols_badge[idx].markdown(f"<div style='background-color:#1e293b;color:#64748b;padding:5px;border-radius:4px;text-align:center;text-decoration:line-through;'>❌ {n}</div>", unsafe_allow_html=True)
+            cols_badge[idx].markdown(f"<div style='background-color:#1e293b;color:#94a3b8;padding:5px;border-radius:4px;text-align:center;'>❄️ {n}</div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
 # =====================================================================
-# AFFICHAGE DES GRILLES DE COMBAT PROPOSÉES
+# 5. FORMULAIRE DE SAISIE MANUELLE (LE BLOC COMPLÉTÉ)
 # =====================================================================
-st.subheader("🎰 2️⃣ Vos Propositions de Grilles (Moteur de Croisement Activé)")
+st.subheader(f"🎯 Saisie manuelle (Nouveau Tirage {jeu})")
+date_tirage = st.date_input("Date du tirage :")
+
+col_saisie = st.columns(5)
+n1 = col_saisie[0].number_input("N° 1", min_value=0, max_value=50, value=0, key="n1")
+n2 = col_saisie[1].number_input("N° 2", min_value=0, max_value=50, value=0, key="n2")
+n3 = col_saisie[2].number_input("N° 3", min_value=0, max_value=50, value=0, key="n3")
+n4 = col_saisie[3].number_input("N° 4", min_value=0, max_value=50, value=0, key="n4")
+n5 = col_saisie[4].number_input("N° 5", min_value=0, max_value=50, value=0, key="n5")
+
+tirage_numeros_propres = [n for n in [n1, n2, n3, n4, n5] if n != 0]
+e1_csv, e2_csv = 0, 0
+
+if jeu == "Loto":
+    col_bonus = st.columns(3)
+    chance_sorti = col_bonus[0].number_input("Numéro Chance", min_value=0, max_value=10, value=0)
+    e1_csv = chance_sorti
+else:
+    col_bonus = st.columns(3)
+    et1 = col_bonus[0].number_input("Étoile 1", min_value=0, max_value=12, value=0)
+    et2 = col_bonus[1].number_input("Étoile 2", min_value=0, max_value=12, value=0)
+    e1_csv, e2_csv = et1, et2
+
+if st.button("💾 Enregistrer ce tirage et actualiser"):
+    if len(tirage_numeros_propres) == 5:
+        nouvelle_ligne = {"Jeu": jeu, "Date": str(date_tirage), "N1": n1, "N2": n2, "N3": n3, "N4": n4, "N5": n5, "E1": e1_csv, "E2": e2_csv}
+        df_nouveau = pd.DataFrame([nouvelle_ligne])
+        df_existant = pd.read_csv(FICHIER_ACTIF) if os.path.exists(FICHIER_ACTIF) else pd.DataFrame()
+        pd.concat([df_existant, df_nouveau], ignore_index=True).to_csv(FICHIER_ACTIF, index=False)
+        st.success(f"✅ Nouveau tirage enregistré avec succès !")
+        st.rerun()
+    else:
+        st.error("⚠️ Saisie incomplète. Veuillez entrer les 5 numéros.")
+
+st.markdown("---")
+
+# =====================================================================
+# 6. AFFICHAGE DES GRILLES DE COMBAT PROPOSÉES
+# =====================================================================
+st.subheader("🎰 Vos Propositions de Grilles Dynamiques")
 grilles_actives = grilles_loto if jeu == "Loto" else grilles_euro
 
 for nom, num_liste, bonus in grilles_actives:
@@ -157,12 +203,12 @@ for nom, num_liste, bonus in grilles_actives:
         cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
 
 # =====================================================================
-# HISTORIQUE LATÉRAL
+# 7. HISTORIQUE LATÉRAL
 # =====================================================================
 st.sidebar.header(f"📊 Données {jeu}")
 if os.path.exists(FICHIER_ACTIF):
     df_side = pd.read_csv(FICHIER_ACTIF)
-    st.sidebar.dataframe(df_side, height=400)
-    if st.sidebar.button("🗑️ Vider cette base uniquement"):
+    st.sidebar.dataframe(df_side, height=300)
+    if st.sidebar.button("🗑️ Vider cette base"):
         os.remove(FICHIER_ACTIF)
         st.rerun()
