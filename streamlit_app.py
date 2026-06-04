@@ -201,25 +201,6 @@ for nom, num_liste, bonus in grilles_actives:
     else:
         cols[5].button(f"⭐ {bonus[0]}", key=f"et1_{nom}", disabled=True)
         cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
-# =====================================================================
-# ZONE 0 : TES ALGORITHMES ACTUELS (REPRÉSENTATION CHRONOLOGIQUE)
-# =====================================================================
-
-def obtenir_grilles_existantes():
-    """
-    Cette fonction représente ce que ton application génère déjà.
-    Elle simule les 6 grilles brutes issues du Circuit Fermé V45,
-    de la Fusion et du Mixte que tu as testées.
-    """
-    # Ici, on retrouve tes deux grilles gagnantes et tes autres grilles de test
-    grille_fusion = [1, 7, 16, 20, 30]      # Grille Inter-Axes A (2 bons numéros)
-    grille_mixte = [1, 2, 18, 20, 30]       # Grille Transversale (2 bons numéros)
-    grille_3 = [4, 12, 17, 18, 45]          # Exemple de grille avec suite stricte
-    grille_4 = [2, 8, 16, 24, 40]           # Exemple de grille 100% paire
-    grille_5 = [5, 15, 25, 35, 45]          # Exemple de grille hors limites de somme
-    grille_6 = [3, 9, 14, 22, 31]
-    
-    return [grille_fusion, grille_mixte, grille_3, grille_4, grille_5, grille_6]
 
 
 # =====================================================================
