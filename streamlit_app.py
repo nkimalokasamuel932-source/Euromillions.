@@ -43,9 +43,8 @@ if not st.session_state["connecte"]:
     st.stop() # Bloque l'application tant qu'on n'est pas logué
 
 # =====================================================================
-# À PARTIR D'ICI : LE RESTE DE TON APPLICATION (ACCESSIBLE UNIQUEMENT SI LOGUÉ)
+# CONFIGURATION DE LA BARRE LATÉRALE (SIDEBAR)
 # =====================================================================
-# Bouton de déconnexion dans la barre latérale pour le confort du client
 if st.sidebar.button("🚪 Se déconnecter"):
     st.session_state["connecte"] = False
     st.session_state["username"] = ""
@@ -53,7 +52,9 @@ if st.sidebar.button("🚪 Se déconnecter"):
 
 st.sidebar.markdown(f"👤 Membre connecté : **{st.session_state['username']}**")
 
-# --- LE RESTE DE TON CODE RESTE COMPLÈTEMENT LE MÊME ---
+# =====================================================================
+# DONNÉES INVARIANTES ET CONFIGURATION DU RADAR
+# =====================================================================
 COLONNES_BRUTES = {
     "COLONNE 0 (Ancrage)": [3, 10, 15, 17, 20, 30, 35, 41, 43],
     "COLONNE 1 (Verrous)": [1, 4, 14, 25, 26, 32, 34, 39, 48],
@@ -67,6 +68,7 @@ ETOILES_EURO = [[1, 9], [3, 11], [2, 8], [4, 12], [5, 10], [6, 7]]
 CSV_LOTO = "historique_loto.csv"
 CSV_EURO = "historique_euromillions.csv"
 
+# Initialisation des fichiers de données si inexistants
 if not os.path.exists(CSV_LOTO):
     hist_loto = [
         {"Jeu": "Loto", "Date": "2026-05-04", "N1": 4, "N2": 8, "N3": 15, "N4": 18, "N5": 46, "E1": 2, "E2": 0},
@@ -94,13 +96,14 @@ if not os.path.exists(CSV_EURO):
         {"Jeu": "EuroMillions", "Date": "2026-05-08", "N1": 2, "N2": 17, "N3": 19, "N4": 34, "N5": 37, "E1": 8, "E2": 11},
         {"Jeu": "EuroMillions", "Date": "2026-05-12", "N1": 4, "N2": 26, "N3": 32, "N4": 35, "N5": 36, "E1": 5, "E2": 7},
         {"Jeu": "EuroMillions", "Date": "2026-05-15", "N1": 3, "N2": 10, "N3": 38, "N4": 41, "N5": 43, "E1": 2, "E2": 9},
-        {"Jeu": "EuroMillions", "Date": "2026-05-19", "N1": 2, "N2": 12, "N3": 20, "N4": 38, "N5": 45, "E1": 2, "E2": 5},
+        {"Jeu": "EuroMillions", "Date": "2026-05-19", "N1": 2, "衰2": 12, "N3": 20, "N4": 38, "N5": 45, "E1": 2, "E2": 5},
         {"Jeu": "EuroMillions", "Date": "2026-05-22", "N1": 6, "N2": 22, "N3": 26, "N4": 31, "N5": 37, "E1": 5, "E2": 8},
         {"Jeu": "EuroMillions", "Date": "2026-05-26", "N1": 6, "N2": 23, "N3": 25, "N4": 35, "N5": 37, "E1": 6, "E2": 12},
         {"Jeu": "EuroMillions", "Date": "2026-05-29", "N1": 5, "N2": 14, "N3": 18, "N4": 31, "N5": 35, "E1": 2, "E2": 12}
     ]
     pd.DataFrame(hist_euro).to_csv(CSV_EURO, index=False)
 
+# Fonctions algorithmiques
 def phase_1_sourdine_strict(grilles_proposees):
     grilles_validees = []
     for nom, grille, bonus in grilles_proposees:
@@ -145,11 +148,20 @@ def phase_3_optimiser_et_reduire(grilles_filtrees, super_grille, limite_max=2):
             grilles_finales.append(item)
     return grilles_finales[:limite_max]
 
+# INTERFACE D'AFFICHAGE DU RADAR
 st.title("🔒 Radar Croisé V45 — Inverseur de Sourdine")
+
 jeu = st.radio("🔄 Sélectionnez le moteur de jeu actif :", ("Loto", "EuroMillions"), horizontal=True)
-strategie = st.radio("🎯 Stratégie des grilles :", ("🟢 Jouer les numéros Disponibles (Standard)", "❌ Jouer UNIQUEMENT les numéros Exclus (Sourdine Inverse)"), horizontal=False)
+
+strategie = st.radio(
+    "🎯 Stratégie des grilles :",
+    ("🟢 Jouer les numéros Disponibles (Standard)", "❌ Jouer UNIQUEMENT les numéros Exclus (Sourdine Inverse)"),
+    horizontal=False
+)
+
 FICHIER_ACTIF = CSV_LOTO if jeu == "Loto" else CSV_EURO
 
+# EXTRACTION ET FILTRAGE DES NUMÉROS
 numeros_sortis_3_tirages = set()
 if os.path.exists(FICHIER_ACTIF):
     try:
@@ -195,81 +207,4 @@ else:
         ("Grille Verrous pure (Axe Col 1)", [disp1[0], disp1[1], disp1[2], disp1[3], disp1[4]], ETOILES_EURO[1]),
         ("Grille Inter-Axes A (Fusion)", [disp0[0], disp0[1], disp1[0], disp3[0], disp3[1]], ETOILES_EURO[4]),
         ("Grille Inter-Axes B (Maillage)", [disp0[0], disp2[0], disp1[0], disp1[1], disp3[0]], ETOILES_EURO[5]),
-        ("Grille Transversale (Mixte)", [disp0[0], disp2[2], disp0[1], disp2[3], disp1[0]], ETOILES_EURO[0])
-    ]
-
-if "UNIQUEMENT les numéros Exclus" in strategie:
-    st.warning("⚠️ **MODE CHOC ACTIVÉ :** Radar inversé. Priorité aux numéros sortis récemment (Exclus).")
-else:
-    st.success("🟢 **MODE STANDARD ACTIVÉ :** Protection active, les numéros récents sont éliminés.")
-
-st.subheader(f"📊 Cartographie des Colonnes ({jeu})")
-for nom_col, liste_nums in COLONNES_BRUTES.items():
-    st.markdown(f"**{nom_col}**")
-    cols_badge = st.columns(len(liste_nums))
-    for idx, n in enumerate(liste_nums):
-        if n in numeros_sortis_3_tirages:
-            cols_badge[idx].markdown(f"<div style='background-color:#991b1b;color:white;padding:5px;border-radius:4px;text-align:center;font-weight:bold;'>🔥 {n}</div>", unsafe_allow_html=True)
-        else:
-            cols_badge[idx].markdown(f"<div style='background-color:#1e293b;color:#94a3b8;padding:5px;border-radius:4px;text-align:center;'>❄️ {n}</div>", unsafe_allow_html=True)
-
-st.markdown("---")
-
-st.subheader(f"🎯 Saisie manuelle (Nouveau Tirage {jeu})")
-date_tirage = st.date_input("Date du tirage :")
-col_saisie = st.columns(5)
-n1 = col_saisie[0].number_input("N° 1", min_value=0, max_value=50, value=0, key="n1")
-n2 = col_saisie[1].number_input("N° 2", min_value=0, max_value=50, value=0, key="n2")
-n3 = col_saisie[2].number_input("N° 3", min_value=0, max_value=50, value=0, key="n3")
-n4 = col_saisie[3].number_input("N° 4", min_value=0, max_value=50, value=0, key="n4")
-n5 = col_saisie[4].number_input("N° 5", min_value=0, max_value=50, value=0, key="n5")
-
-tirage_numeros_propres = [n for n in [n1, n2, n3, n4, n5] if n != 0]
-e1_csv, e2_csv = 0, 0
-
-if jeu == "Loto":
-    col_bonus = st.columns(3)
-    chance_sorti = col_bonus[0].number_input("Numéro Chance", min_value=0, max_value=10, value=0)
-    e1_csv = chance_sorti
-else:
-    col_bonus = st.columns(3)
-    et1 = col_bonus[0].number_input("Étoile 1", min_value=0, max_value=12, value=0)
-    et2 = col_bonus[1].number_input("Étoile 2", min_value=0, max_value=12, value=0)
-    e1_csv, e2_csv = et1, et2
-
-if st.button("💾 Enregistrer ce tirage et actualiser"):
-    if len(tirage_numeros_propres) == 5:
-        nouvelle_ligne = {"Jeu": jeu, "Date": str(date_tirage), "N1": n1, "N2": n2, "N3": n3, "N4": n4, "N5": n5, "E1": e1_csv, "E2": e2_csv}
-        df_nouveau = pd.DataFrame([nouvelle_ligne])
-        df_existant = pd.read_csv(FICHIER_ACTIF) if os.path.exists(FICHIER_ACTIF) else pd.DataFrame()
-        pd.concat([df_existant, df_nouveau], ignore_index=True).to_csv(FICHIER_ACTIF, index=False)
-        st.success(f"✅ Nouveau tirage enregistré avec succès !")
-        st.rerun()
-    else:
-        st.error("⚠️ Saisie incomplète. Veuillez entrer les 5 numéros.")
-
-st.markdown("---")
-
-st.subheader("🎰 Vos Propositions de Grilles Ultra-Optimisées (Plafond : 2)")
-grilles_epurees = phase_1_sourdine_strict(grilles_brutes)
-super_grille = phase_2_generer_super_grille(grilles_brutes, jeu)
-grilles_finales = phase_3_optimiser_et_reduire(grilles_epurees, super_grille, limite_max=2)
-
-for nom, num_liste, bonus in grilles_finales:
-    st.markdown(f"🎯 **{nom}**")
-    cols = st.columns(7)
-    for i, num in enumerate(sorted(num_liste)):
-        cols[i].button(f"💎 {num}", key=f"btn_{nom}_{i}", disabled=True)
-    if jeu == "Loto":
-        cols[5].button(f"🌟 {bonus}", key=f"chance_{nom}", disabled=True)
-    else:
-        cols[5].button(f"⭐ {bonus[0]}", key=f"et1_{nom}", disabled=True)
-        cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
-
-st.sidebar.header(f"📊 Données {jeu}")
-if os.path.exists(FICHIER_ACTIF):
-    df_side = pd.read_csv(FICHIER_ACTIF)
-    st.sidebar.dataframe(df_side, height=300)
-    if st.sidebar.button("🗑️ Vider cette base"):
-        os.remove(FICHIER_ACTIF)
-        st.rerun()
+        ("Grille Transversale (Mixte)", [disp0[0], disp2[2], disp0
