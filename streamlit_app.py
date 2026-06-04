@@ -3,8 +3,57 @@ import pandas as pd
 import os
 
 # =====================================================================
-# 1. ARCHITECTURE DES COLONNES DU CIRCUIT FERMÉ BRUT (INVARIANTE)
+# SÉCURITÉ : ÉCRAN DE CONNEXION MULTI-UTILISATEURS (VIP)
 # =====================================================================
+st.set_page_config(page_title="Observatoire Circuit Fermé", layout="centered")
+
+# Initialisation de la session utilisateur
+if "connecte" not in st.session_state:
+    st.session_state["connecte"] = False
+if "username" not in st.session_state:
+    st.session_state["username"] = ""
+
+# Si l'utilisateur n'est pas connecté, on affiche le formulaire de login
+if not st.session_state["connecte"]:
+    st.title("🔒 Loto Radar Pro V45 — Accès Sécurisé")
+    st.markdown("### 🎫 Espace Membres Privé")
+    
+    # Formulaire de saisie
+    username_input = st.text_input("Nom d'utilisateur :")
+    password_input = st.text_input("Mot de passe :", type="password")
+    
+    if st.button("🔑 Se connecter au Radar"):
+        try:
+            # Récupération de la liste des comptes cachée dans les secrets de Streamlit
+            comptes_vip = st.secrets["comptes_utilisateurs"]
+            
+            # Vérification des identifiants
+            if username_input in comptes_vip and comptes_vip[username_input] == password_input:
+                st.session_state["connecte"] = True
+                st.session_state["username"] = username_input
+                st.success(f"Bonjour {username_input} ! Connexion réussie...")
+                st.rerun()
+            else:
+                st.error("❌ Identifiant ou mot de passe incorrect.")
+        except Exception as e:
+            st.warning("⚠️ Configuration de sécurité en cours sur le serveur. Veuillez patienter.")
+            
+    st.markdown("---")
+    st.info("💡 Pour obtenir vos accès personnels ou renouveler votre abonnement, contactez le gestionnaire.")
+    st.stop() # Bloque l'application tant qu'on n'est pas logué
+
+# =====================================================================
+# À PARTIR D'ICI : LE RESTE DE TON APPLICATION (ACCESSIBLE UNIQUEMENT SI LOGUÉ)
+# =====================================================================
+# Bouton de déconnexion dans la barre latérale pour le confort du client
+if st.sidebar.button("🚪 Se déconnecter"):
+    st.session_state["connecte"] = False
+    st.session_state["username"] = ""
+    st.rerun()
+
+st.sidebar.markdown(f"👤 Membre connecté : **{st.session_state['username']}**")
+
+# --- LE RESTE DE TON CODE RESTE COMPLÈTEMENT LE MÊME ---
 COLONNES_BRUTES = {
     "COLONNE 0 (Ancrage)": [3, 10, 15, 17, 20, 30, 35, 41, 43],
     "COLONNE 1 (Verrous)": [1, 4, 14, 25, 26, 32, 34, 39, 48],
@@ -18,9 +67,6 @@ ETOILES_EURO = [[1, 9], [3, 11], [2, 8], [4, 12], [5, 10], [6, 7]]
 CSV_LOTO = "historique_loto.csv"
 CSV_EURO = "historique_euromillions.csv"
 
-# =====================================================================
-# INITIALISATION DES BASES DE DONNÉES RÉELLES (LOTO & EURO)
-# =====================================================================
 if not os.path.exists(CSV_LOTO):
     hist_loto = [
         {"Jeu": "Loto", "Date": "2026-05-04", "N1": 4, "N2": 8, "N3": 15, "N4": 18, "N5": 46, "E1": 2, "E2": 0},
@@ -55,23 +101,16 @@ if not os.path.exists(CSV_EURO):
     ]
     pd.DataFrame(hist_euro).to_csv(CSV_EURO, index=False)
 
-# =====================================================================
-# Fonctions d'optimisation (Phases 1, 2, 3)
-# =====================================================================
-
 def phase_1_sourdine_strict(grilles_proposees):
     grilles_validees = []
     for nom, grille, bonus in grilles_proposees:
         grille_triee = sorted(grille)
-        
         pairs = len([n for n in grille_triee if n % 2 == 0])
         if pairs == 0 or pairs == 5:
             continue
-            
         somme = sum(grille_triee)
         if somme < 60 or somme > 180:
             continue
-            
         suite_detectee = False
         for i in range(len(grille_triee) - 2):
             if grille_triee[i+1] == grille_triee[i] + 1 and grille_triee[i+2] == grille_triee[i] + 2:
@@ -79,68 +118,39 @@ def phase_1_sourdine_strict(grilles_proposees):
                 break
         if suite_detectee:
             continue
-            
         grilles_validees.append((nom, grille_triee, bonus))
     return grilles_validees
 
 def phase_2_generer_super_grille(grilles_brutes, jeu_actif):
-    # Cherche l'intersection entre Grille Inter-Axes A (index 3) et Grille Transversale (index 5)
     if len(grilles_brutes) < 6:
         return None
-        
     grille_f = set(grilles_brutes[3][1])
     grille_m = set(grilles_brutes[5][1])
-    
     numeros_communs = list(grille_f.intersection(grille_m))
-    
     if len(numeros_communs) > 0:
         super_grille = list(numeros_communs)
         pour_completer = [n for n in grilles_brutes[3][1] if n not in super_grille]
-        
         while len(super_grille) < 5 and pour_completer:
             super_grille.append(pour_completer.pop(0))
-            
         bonus_final = CHANCES_LOTO[4] if jeu_actif == "Loto" else ETOILES_EURO[4]
         return ("⚡ SUPER-GRILLE MAÎTRESSE (Fusion x Mixte)", sorted(super_grille), bonus_final)
-    
     return None
 
 def phase_3_optimiser_et_reduire(grilles_filtrees, super_grille, limite_max=2):
     grilles_finales = []
-    
-    if super_grid := super_grid_check(super_grille, grilles_finales):
+    if super_grille and not any(super_grille[1] == g[1] for g in grilles_finales):
         grilles_finales.append(super_grille)
-        
     for item in grilles_filtrees:
         if not any(item[1] == g[1] for g in grilles_finales):
             grilles_finales.append(item)
-            
     return grilles_finales[:limite_max]
 
-def super_grid_check(super_grille, grilles_finales):
-    return super_grille and not any(super_grille[1] == g[1] for g in grilles_finales)
-
-# =====================================================================
-# 2. INTERFACE GRAPHIQUE STREAMLIT
-# =====================================================================
-st.set_page_config(page_title="Observatoire Circuit Fermé", layout="centered")
 st.title("🔒 Radar Croisé V45 — Inverseur de Sourdine")
-
 jeu = st.radio("🔄 Sélectionnez le moteur de jeu actif :", ("Loto", "EuroMillions"), horizontal=True)
-
-strategie = st.radio(
-    "🎯 Stratégie des grilles :",
-    ("🟢 Jouer les numéros Disponibles (Standard)", "❌ Jouer UNIQUEMENT les numéros Exclus (Sourdine Inverse)"),
-    horizontal=False
-)
-
+strategie = st.radio("🎯 Stratégie des grilles :", ("🟢 Jouer les numéros Disponibles (Standard)", "❌ Jouer UNIQUEMENT les numéros Exclus (Sourdine Inverse)"), horizontal=False)
 FICHIER_ACTIF = CSV_LOTO if jeu == "Loto" else CSV_EURO
 
-# =====================================================================
-# 3. EXTRACTION ET FILTRAGE DES NUMÉROS
-# =====================================================================
 numeros_sortis_3_tirages = set()
-
 if os.path.exists(FICHIER_ACTIF):
     try:
         df_hist = pd.read_csv(FICHIER_ACTIF)
@@ -159,7 +169,6 @@ def obtenir_numeros_ciblés(nom_colonne):
         cibles = [n for n in nums_bruts if n in numeros_sortis_3_tirages]
     else:
         cibles = [n for n in nums_bruts if n not in numeros_sortis_3_tirages]
-        
     if len(cibles) < 5:
         complements = [n for n in nums_bruts if n not in cibles]
         cibles = cibles + complements
@@ -170,7 +179,6 @@ disp1 = obtenir_numeros_ciblés("COLONNE 1 (Verrous)")
 disp2 = obtenir_numeros_ciblés("COLONNE 2 (Résonance)")
 disp3 = obtenir_numeros_ciblés("COLONNE 3 (Dérive)")
 
-# GENÈRE LES 6 GRILLES DE BASE
 if jeu == "Loto":
     grilles_brutes = [
         ("Grille Dérive pure (Axe Col 3)", [disp3[0], disp3[1], disp3[2], disp3[3], disp3[4]], CHANCES_LOTO[3]),
@@ -195,9 +203,6 @@ if "UNIQUEMENT les numéros Exclus" in strategie:
 else:
     st.success("🟢 **MODE STANDARD ACTIVÉ :** Protection active, les numéros récents sont éliminés.")
 
-# =====================================================================
-# 4. AFFICHAGE DE LA CARTOGRAPHIE VISUELLE
-# =====================================================================
 st.subheader(f"📊 Cartographie des Colonnes ({jeu})")
 for nom_col, liste_nums in COLONNES_BRUTES.items():
     st.markdown(f"**{nom_col}**")
@@ -210,12 +215,8 @@ for nom_col, liste_nums in COLONNES_BRUTES.items():
 
 st.markdown("---")
 
-# =====================================================================
-# 5. FORMULAIRE DE SAISIE MANUELLE
-# =====================================================================
 st.subheader(f"🎯 Saisie manuelle (Nouveau Tirage {jeu})")
 date_tirage = st.date_input("Date du tirage :")
-
 col_saisie = st.columns(5)
 n1 = col_saisie[0].number_input("N° 1", min_value=0, max_value=50, value=0, key="n1")
 n2 = col_saisie[1].number_input("N° 2", min_value=0, max_value=50, value=0, key="n2")
@@ -249,32 +250,22 @@ if st.button("💾 Enregistrer ce tirage et actualiser"):
 
 st.markdown("---")
 
-# =====================================================================
-# 6. ENTONNOIR ET AFFICHAGE DES GRILLES OPTIMISÉES (2 MAX)
-# =====================================================================
 st.subheader("🎰 Vos Propositions de Grilles Ultra-Optimisées (Plafond : 2)")
-
-# Calculs de l'entonnoir
 grilles_epurees = phase_1_sourdine_strict(grilles_brutes)
 super_grille = phase_2_generer_super_grille(grilles_brutes, jeu)
 grilles_finales = phase_3_optimiser_et_reduire(grilles_epurees, super_grille, limite_max=2)
 
-# Affichage dynamique sur l'application
 for nom, num_liste, bonus in grilles_finales:
     st.markdown(f"🎯 **{nom}**")
     cols = st.columns(7)
     for i, num in enumerate(sorted(num_liste)):
         cols[i].button(f"💎 {num}", key=f"btn_{nom}_{i}", disabled=True)
-        
     if jeu == "Loto":
         cols[5].button(f"🌟 {bonus}", key=f"chance_{nom}", disabled=True)
     else:
         cols[5].button(f"⭐ {bonus[0]}", key=f"et1_{nom}", disabled=True)
         cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
 
-# =====================================================================
-# 7. HISTORIQUE LATÉRAL
-# =====================================================================
 st.sidebar.header(f"📊 Données {jeu}")
 if os.path.exists(FICHIER_ACTIF):
     df_side = pd.read_csv(FICHIER_ACTIF)
