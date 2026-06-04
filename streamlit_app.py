@@ -201,7 +201,155 @@ for nom, num_liste, bonus in grilles_actives:
     else:
         cols[5].button(f"⭐ {bonus[0]}", key=f"et1_{nom}", disabled=True)
         cols[6].button(f"⭐ {bonus[1]}", key=f"et2_{nom}", disabled=True)
+# =====================================================================
+# ZONE 0 : TES ALGORITHMES ACTUELS (REPRÉSENTATION CHRONOLOGIQUE)
+# =====================================================================
 
+def obtenir_grilles_existantes():
+    """
+    Cette fonction représente ce que ton application génère déjà.
+    Elle simule les 6 grilles brutes issues du Circuit Fermé V45,
+    de la Fusion et du Mixte que tu as testées.
+    """
+    # Ici, on retrouve tes deux grilles gagnantes et tes autres grilles de test
+    grille_fusion = [1, 7, 16, 20, 30]      # Grille Inter-Axes A (2 bons numéros)
+    grille_mixte = [1, 2, 18, 20, 30]       # Grille Transversale (2 bons numéros)
+    grille_3 = [4, 12, 17, 18, 45]          # Exemple de grille avec suite stricte
+    grille_4 = [2, 8, 16, 24, 40]           # Exemple de grille 100% paire
+    grille_5 = [5, 15, 25, 35, 45]          # Exemple de grille hors limites de somme
+    grille_6 = [3, 9, 14, 22, 31]
+    
+    return [grille_fusion, grille_mixte, grille_3, grille_4, grille_5, grille_6]
+
+
+# =====================================================================
+# PHASE 1 : LA SOURDINE INVERSÉE STRICTE (FILTRAGE STATISTIQUE)
+# =====================================================================
+
+def phase_1_sourdine_strict(grilles_proposees):
+    """
+    Analyse les grilles et élimine celles qui n'ont presque aucune 
+    chance mathématique de sortir (100% paires/impaires, suites longues, etc.).
+    """
+    grilles_validees = []
+    
+    for grille in grilles_proposees:
+        grille_triee = sorted(grille)
+        
+        # 1. Filtre Parité : On rejette si 100% Pair (5) ou 100% Impair (0)
+        pairs = len([n for n in grille_triee if n % 2 == 0])
+        if pairs == 0 or pairs == 5:
+            continue
+            
+        # 2. Filtre Somme : La somme au Loto se situe historiquement entre 60 et 180
+        somme = sum(grille_triee)
+        if somme < 60 or somme > 180:
+            continue
+            
+        # 3. Filtre Suites : On refuse s'il y a 3 numéros consécutifs (ex: 16-17-18)
+        suite_detectee = False
+        for i in range(len(grille_triee) - 2):
+            if grille_triee[i+1] == grille_triee[i] + 1 and grille_triee[i+2] == grille_triee[i] + 2:
+                suite_detectee = True
+                break
+        if suite_detectee:
+            continue
+            
+        # La grille est validée par la Sourdine
+        grilles_validees.append(grille_triee)
+        
+    return grilles_validees
+
+
+# =====================================================================
+# PHASE 2 : L'INTERSECTION CRITIQUE (LA SUPER-GRILLE FUSION / MIXTE)
+# =====================================================================
+
+def phase_2_generer_super_grille(grilles_brutes):
+    """
+    Analyse le comportement de la Fusion et du Mixte (les 2 premières grilles).
+    Identifie les numéros en commun pour isoler une Grille Maîtresse Prioritaire.
+    """
+    if len(grilles_brutes) < 2:
+        return None
+        
+    grille_f = set(grilles_brutes[0])
+    grille_m = set(grilles_brutes[1])
+    
+    # Trouver les numéros identiques dans les deux stratégies
+    numeros_communs = list(grille_f.intersection(grille_m)) # ex: [1, 20, 30]
+    
+    # Si on a des numéros communs, on construit la Super-Grille autour
+    if len(numeros_communs) > 0:
+        super_grille = list(numeros_communs)
+        # On complète la grille jusqu'à 5 numéros avec les meilleurs éléments restants de la Fusion
+        pour_completer = [n for n in grilles_brutes[0] if n not in super_grille]
+        
+        while len(super_grille) < 5 and pour_completer:
+            super_grille.append(pour_completer.pop(0))
+            
+        return sorted(super_grille)
+    
+    return None
+
+
+# =====================================================================
+# PHASE 3 : LE SYSTEME REDUIT (COUVERTURE ET REDUCTION FINALE)
+# =====================================================================
+
+def phase_3_optimiser_et_reduire(grilles_filtrees, super_grille, limite_max=2):
+    """
+    Prend toutes les grilles épurées, place la Super-Grille en tête
+    et applique une limite stricte pour réduire drastiquement le coût du joueur.
+    """
+    grilles_finales = []
+    
+    # Étape A : On place la Super-Grille en priorité absolue si elle existe
+    if super_grille and super_grille not in grilles_finales:
+        grilles_finales.append(super_grille)
+        
+    # Étape B : On ajoute les grilles filtrées par la Sourdine (sans doublons)
+    for g in grilles_filtrees:
+        if g not in grilles_finales:
+            grilles_finales.append(g)
+            
+    # Étape C : Application du plafond strict (Ex: maximum 2 grilles à jouer)
+    return grilles_finales[:limite_max]
+
+
+# =====================================================================
+# POINT D'ENTRÉE : L'ENTREMÊLEMENT DES 3 PHASES
+# =====================================================================
+
+if __name__ == "__main__":
+    print("--- LANCEMENT DU PROGRAMME LOTO RADAR PRO (OPTIMISÉ) ---")
+    
+    # 0. Récupération des grilles de ton algorithme actuel
+    grilles_initiales = obtenir_grilles_existantes()
+    print(f"\n[Initial] Nombre de grilles générées par ton code : {len(grilles_initiales)}")
+    print(f"Grilles brutes : {grilles_initiales}")
+    
+    # 1. Application de la Phase 1 (Sourdine Inversée)
+    grilles_epurees = phase_1_sourdine_strict(grilles_initiales)
+    print(f"\n[Phase 1] Grilles après filtrage Sourdine Strict : {len(grilles_epurees)}")
+    print(f"Grilles restantes : {grilles_epurees}")
+    
+    # 2. Application de la Phase 2 (Création de la Super-Grille Inter-Axes / Mixte)
+    super_grille = phase_2_generer_super_grille(grilles_initiales)
+    print(f"\n[Phase 2] Super-Grille Maîtresse calculée : {super_grille}")
+    
+    # 3. Application de la Phase 3 (Système Réduit à 2 grilles maximum au lieu de 6)
+    grilles_finales_a_jouer = phase_3_optimiser_et_reduire(grilles_epurees, super_grille, limite_max=2)
+    
+    # =====================================================================
+    # AFFICHAGE FINAL POUR L'UTILISATEUR
+    # =====================================================================
+    print("\n==================================================")
+    print(f"🎯 CONFIGURATION FINALE : {len(grilles_finales_a_jouer)} GRILLES OPTIMISÉES À JOUER")
+    print("==================================================")
+    for index, grille in enumerate(grilles_finales_a_jouer, 1):
+        print(f" Grille {index} : {grille}")
+    print("==================================================")
 # =====================================================================
 # 7. HISTORIQUE LATÉRAL
 # =====================================================================
