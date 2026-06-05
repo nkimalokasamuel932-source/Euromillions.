@@ -27,10 +27,15 @@ if not st.session_state["connecte"]:
             # Récupération de la liste des comptes cachée dans les secrets de Streamlit
             comptes_vip = st.secrets["comptes_utilisateurs"]
             
-            # Vérification des identifiants
-            if username_input in comptes_vip and comptes_vip[username_input] == password_input:
+            # Vérification des identifiants (nettoyage des espaces et casse)
+            username_clean = username_input.strip().lower()
+            
+            # Création d'un dictionnaire temporaire avec clés en minuscules pour la vérification
+            comptes_clean = {k.strip().lower(): v for k, v in comptes_vip.items()}
+            
+            if username_clean in comptes_clean and comptes_clean[username_clean] == password_input:
                 st.session_state["connecte"] = True
-                st.session_state["username"] = username_input
+                st.session_state["username"] = username_input.strip() # On garde le nom saisi proprement
                 st.success(f"Bonjour {username_input} ! Connexion réussie...")
                 st.rerun()
             else:
@@ -232,7 +237,8 @@ for nom, num_liste, bonus in grilles_finales:
 # =====================================================================
 # 6. ESPACE SÉCURISÉ — SÉPARATION DES RÔLES (ADMIN VS CLIENT)
 # =====================================================================
-if st.session_state["username"] == "Boss45":
+# Vérification ultra-souple pour l'admin (tolère les espaces et la casse)
+if st.session_state["username"].strip().lower() == "boss4512":
     st.markdown("---")
     st.subheader(f"🛠️ Espace Administrateur (Nouveau Tirage {jeu})")
     date_tirage = st.date_input("Date du tirage :")
